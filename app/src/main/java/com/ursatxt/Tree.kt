@@ -27,7 +27,7 @@ import java.io.File
  * the folder and picks it; Back drops the name. Every row that comes or goes opens
  * or closes its height and fades, %ease250%.
  */
-class Tree(private val a: Activity, private val root: File, private val moving: File) {
+class Tree(private val a: Activity, private val lib: Library, private val root: File, private val moving: File) {
 
     var picked: File? = null; private set
     var onPick: () -> Unit = {}
@@ -87,7 +87,7 @@ class Tree(private val a: Activity, private val root: File, private val moving: 
     }
 
     /** A folder cannot go into itself or a folder inside it. */
-    private fun allowed(f: File) = Notes.canGo(moving, f)
+    private fun allowed(f: File) = lib.canGo(moving, f)
 
     private fun folderRow(f: File, depth: Int) = Guided(depth).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -197,7 +197,7 @@ class Tree(private val a: Activity, private val root: File, private val moving: 
         if (name.isEmpty()) { stopEditing(); return }
         input = null
         a.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(f.windowToken, 0)
-        val made = Notes.newFolder(a, parent, name)
+        val made = lib.newFolder(a, parent, name)
         // The new folder takes its place among its siblings, by name.
         val siblings = (parent.listFiles() ?: emptyArray()).filter { it.isDirectory && !it.name.startsWith(".") }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })

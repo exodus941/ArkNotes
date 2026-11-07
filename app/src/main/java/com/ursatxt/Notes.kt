@@ -10,56 +10,88 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+/** One file or folder on a list. [notes] counts the folder's items of its own kind. */
+class Entry(
+    val file: File, val dir: Boolean, val name: String, val rel: String,
+    val added: Long, val opened: Long, val size: Long, val pinned: Boolean, val hue: Int,
+    val preview: String = "", val notes: Int = 0, val folders: Int = 0,
+)
+
+/** The index file in each library's root. */
+const val META = ".ursatxt.json"
+
 /**
- * Every note is one .md file under [root], and every folder a real folder, so other
- * apps can read them. What a file cannot hold (its colour, a pin, when it was added
- * and opened, whether its name was typed) sits in one index file, [META], keyed by
- * path from the root.
+ * The app's folder: Documents/UrsaNotes once access is granted, the app's own folder
+ * before that. It holds one folder per library, Notes and Sketches.
  */
-object Notes {
-    const val META = ".ursatxt.json"
-    const val EXT = ".md"
-    /** Yeetlist's starting hues, dealt in turn to new notes; any of the 16 can be picked. */
-    private val HUES = intArrayOf(24, 48, 144, 208)
-    val SWATCHES = intArrayOf(8, 24, 36, 48, 60, 76, 128, 144, 168, 180, 192, 208, 240, 288, 316, 344)
-
-    class Entry(
-        val file: File, val dir: Boolean, val name: String, val rel: String,
-        val added: Long, val opened: Long, val size: Long, val pinned: Boolean, val hue: Int,
-        val preview: String = "", val notes: Int = 0, val folders: Int = 0,
-    )
-
-    private var meta: JSONObject? = null
-    private var metaRoot: File? = null
-
+object Store {
     /** True when the shared folder can be used: Android 11+ needs All files access. */
     fun shared(): Boolean = if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager() else true
 
+    private fun hasLegacy(c: Context): Boolean = Build.VERSION.SDK_INT >= 30 ||
+        c.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     /** Documents/UrsaNotes. Notes from when the app was UrsaTXT move here the first time. */
-    private fun publicRoot(): File {
+    fun publicBase(): File {
         val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
         val root = File(docs, "UrsaNotes")
         val old = File(docs, "UrsaTXT")
         if (!root.exists() && old.isDirectory) old.renameTo(root)
-        return root
+        return layout(root)
     }
-    private fun privateRoot(c: Context) = File(c.getExternalFilesDir(null) ?: c.filesDir, "UrsaTXT")
+
+    fun privateBase(c: Context) = layout(File(c.getExternalFilesDir(null) ?: c.filesDir, "UrsaTXT"))
+
+    fun usePublic(c: Context) = shared() && hasLegacy(c)
+
+    fun base(c: Context): File = if (usePublic(c)) publicBase() else privateBase(c)
+
+    private const val LAYOUT = ".layout-2"
 
     /**
-     * Documents/UrsaNotes once access is granted; the app's own folder before that. Notes
-     * written there before access move to the shared folder the first time it is open.
+     * Before sketches, the notes sat straight in the base folder. They move into Notes/
+     * once, with their index, and the base gets a marker so this never runs again.
      */
+    private fun layout(base: File): File {
+        if (File(base, LAYOUT).exists()) return base
+        base.mkdirs()
+        val notes = File(base, "Notes")
+        val olds = base.listFiles()?.toList() ?: emptyList()
+        notes.mkdirs()
+        for (f in olds) {
+            if (f == notes) continue
+            val to = File(notes, f.name)
+            if (!f.renameTo(to)) { f.copyRecursively(to); f.deleteRecursively() }
+        }
+        File(base, "Sketches").mkdirs()
+        File(base, LAYOUT).writeText("Notes and Sketches each hold one library.\n")
+        return base
+    }
+}
+
+/**
+ * One library: every item is one file under [root] with [ext], and every folder a real
+ * folder, so other apps can read them. What a file cannot hold (its colour, a pin, when
+ * it was added and opened, whether its name was typed) sits in one index file, [META],
+ * keyed by path from the root.
+ */
+open class Library(private val sub: String, val EXT: String, val untitled: String) {
+    /** Yeetlist's starting hues, dealt in turn to new items; any of the 16 can be picked. */
+    private val HUES = intArrayOf(24, 48, 144, 208)
+    val SWATCHES = intArrayOf(8, 24, 36, 48, 60, 76, 128, 144, 168, 180, 192, 208, 240, 288, 316, 344)
+
+    private var meta: JSONObject? = null
+    private var metaRoot: File? = null
+
+    /** Items written in the app's own folder before access move to the shared one. */
     fun root(c: Context): File {
-        val priv = privateRoot(c)
-        val r = if (shared() && hasLegacy(c)) publicRoot() else priv
+        val priv = File(Store.privateBase(c), sub)
+        val r = if (Store.usePublic(c)) File(Store.publicBase(), sub) else priv
         if (!r.exists()) r.mkdirs()
         if (r != priv && priv.exists() && (priv.list()?.isNotEmpty() == true)) migrate(priv, r)
         if (metaRoot != r) { metaRoot = r; meta = null }
         return r
     }
-
-    private fun hasLegacy(c: Context): Boolean = Build.VERSION.SDK_INT >= 30 ||
-        c.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     private fun migrate(from: File, to: File) {
         val old = try { JSONObject(File(from, META).readText()) } catch (_: Exception) { JSONObject() }
@@ -101,9 +133,11 @@ object Notes {
         return m.optJSONObject(k) ?: JSONObject().also { m.put(k, it) }
     }
 
-    private fun edit(c: Context, f: File, block: (JSONObject) -> Unit) {
+    fun edit(c: Context, f: File, block: (JSONObject) -> Unit) {
         block(info(c, f)); store(root(c))
     }
+
+    fun flag(c: Context, f: File, key: String) = info(c, f).optBoolean(key, false)
 
     /** Moves every index entry under [from] to [to], or copies them when [keep]. */
     private fun remap(c: Context, from: File, to: File, keep: Boolean) {
@@ -127,7 +161,7 @@ object Notes {
     // ---- reading ----
 
     /**
-     * A note left blank and unnamed goes. The editor removes one on close; this catches
+     * An item left blank and unnamed goes. The editor removes one on close; this catches
      * one whose editor never closed, as when the app was stopped. Run only while no
      * editor is open.
      */
@@ -140,17 +174,20 @@ object Notes {
     fun list(c: Context, dir: File): List<Entry> =
         (dir.listFiles() ?: emptyArray()).filter { visible(it) }.map { entry(c, it) }
 
-    /** Every note at or under [dir] whose name or text holds [q]. */
+    /** Every item at or under [dir] whose name, or a note's text, holds [q]. */
     fun search(c: Context, dir: File, q: String): List<Entry> {
         val out = ArrayList<Entry>()
         dir.walkTopDown().onEnter { it == dir || visible(it) }.forEach { f ->
             if (f == dir || !visible(f)) return@forEach
             val nameHit = f.name.removeSuffix(EXT).contains(q, ignoreCase = true)
             if (f.isDirectory) { if (nameHit) out += entry(c, f); return@forEach }
-            if (nameHit || (f.length() < 2_000_000 && f.readText().contains(q, ignoreCase = true))) out += entry(c, f)
+            if (nameHit || (searchesText && f.length() < 2_000_000 && f.readText().contains(q, ignoreCase = true))) out += entry(c, f)
         }
         return out
     }
+
+    /** Notes are searched by their text as well as their name. */
+    open val searchesText = false
 
     private fun visible(f: File) = !f.name.startsWith(".") && (f.isDirectory || f.name.endsWith(EXT, ignoreCase = true))
 
@@ -179,31 +216,14 @@ object Notes {
 
     fun named(c: Context, f: File) = info(c, f).optBoolean("named", false)
 
-    /** The first two lines of text, without markdown marks. */
-    private fun preview(f: File): String {
-        val lines = ArrayList<String>()
-        try {
-            f.bufferedReader().useLines { seq ->
-                for (raw in seq) {
-                    val l = raw.trim()
-                    if (l.isEmpty()) continue
-                    lines += l.replace(Regex("^#{1,6}\\s+"), "")
-                        .replace(Regex("^(?:[-*+]|\\d+[.)])\\s+(?:\\[[ xX]]\\s*)?"), "")
-                        .replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1")
-                        .replace(Regex("\\*\\*|~~|[*_`]"), "")
-                        .replace(Regex("\\\\([\\\\`*_~\\[\\]])"), "$1")
-                    if (lines.size == 2) break
-                }
-            }
-        } catch (_: Exception) {}
-        return lines.joinToString("\n")
-    }
+    /** What a card shows under the name. */
+    open fun preview(f: File): String = ""
 
     // ---- writing ----
 
     /** [name] made safe as a file name: the characters Android and desktops refuse go. */
     fun clean(name: String): String = name.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), " ")
-        .replace(Regex("\\s+"), " ").trim().trimEnd('.', ' ').take(80).ifEmpty { "Untitled note" }
+        .replace(Regex("\\s+"), " ").trim().trimEnd('.', ' ').take(80).ifEmpty { untitled }
 
     /** A free name in [dir]: "Name", then "Name (2)", "Name (3)". */
     fun unique(dir: File, name: String, folder: Boolean, except: File? = null): File {
@@ -217,17 +237,15 @@ object Notes {
         }
     }
 
-    fun newNote(c: Context, dir: File): File {
-        val f = unique(dir, "Untitled note", false)
-        f.writeText("")
+    /** Records a new item's dates and colour; the file itself is the caller's. */
+    fun added(c: Context, f: File) {
         val now = System.currentTimeMillis()
         edit(c, f) { it.put("added", now); it.put("opened", now); it.put("named", false) }
         hueOf(c, f)
-        return f
     }
 
     fun newFolder(c: Context, dir: File, name: String = "New Folder"): File {
-        val f = unique(dir, clean(name).let { if (it == "Untitled note") "New Folder" else it }, true)
+        val f = unique(dir, clean(name).let { if (it == untitled) "New Folder" else it }, true)
         f.mkdirs()
         val now = System.currentTimeMillis()
         edit(c, f) { it.put("added", now); it.put("opened", now) }
@@ -280,59 +298,125 @@ object Notes {
 
     // ---- backup ----
 
-    /** Every note and folder and the index, at the highest compression. */
-    fun export(c: Context, out: java.io.OutputStream): Int {
+    /** Every item, folder and the index, under [prefix]/ in the zip. Returns the items. */
+    fun export(c: Context, z: ZipOutputStream, prefix: String): Int {
         val r = root(c)
         var n = 0
-        ZipOutputStream(out.buffered()).use { z ->
-            z.setLevel(Deflater.BEST_COMPRESSION)
-            r.walkTopDown().forEach { f ->
-                if (f == r) return@forEach
-                val path = rel(c, f)
-                if (path.endsWith(".tmp")) return@forEach
-                if (f.isDirectory) { z.putNextEntry(ZipEntry("$path/")); z.closeEntry(); return@forEach }
-                z.putNextEntry(ZipEntry(path).apply { time = f.lastModified() })
-                f.inputStream().use { it.copyTo(z) }
-                z.closeEntry()
-                if (f.name.endsWith(EXT, ignoreCase = true)) n++
-            }
+        r.walkTopDown().forEach { f ->
+            if (f == r) return@forEach
+            val path = "$prefix/" + rel(c, f)
+            if (path.endsWith(".tmp")) return@forEach
+            if (f.isDirectory) { z.putNextEntry(ZipEntry("$path/")); z.closeEntry(); return@forEach }
+            z.putNextEntry(ZipEntry(path).apply { time = f.lastModified() })
+            f.inputStream().use { it.copyTo(z) }
+            z.closeEntry()
+            if (f.name.endsWith(EXT, ignoreCase = true)) n++
         }
         return n
     }
 
+    private var incoming = JSONObject()
+    private val renamed = HashMap<String, String>()
+
+    fun importStart() { incoming = JSONObject(); renamed.clear() }
+
     /**
-     * Unpacks a backup into the root. A note whose name is taken arrives beside it as
-     * "Name (2)"; a folder of the same name is merged into. Returns the notes added.
+     * One zip entry at [path] inside this library. An item whose name is taken arrives
+     * beside it as "Name (2)"; a folder of the same name is merged into. True for an item.
      */
-    fun import(c: Context, input: java.io.InputStream): Int {
+    fun importEntry(c: Context, path: String, dir: Boolean, time: Long, data: java.io.InputStream): Boolean {
+        val r = root(c)
+        if (path == META) { incoming = try { JSONObject(data.readBytes().decodeToString()) } catch (_: Exception) { JSONObject() }; return false }
+        val target = File(r, path)
+        if (dir) { target.mkdirs(); return false }
+        if (!path.endsWith(EXT, ignoreCase = true)) return false
+        target.parentFile?.mkdirs()
+        val dest = unique(target.parentFile!!, target.name, false)
+        dest.outputStream().use { data.copyTo(it) }
+        if (time > 0) dest.setLastModified(time)
+        renamed[path] = rel(c, dest)
+        return true
+    }
+
+    fun importEnd(c: Context) {
         val r = root(c)
         val m = load(r)
-        var incoming = JSONObject()
-        val renamed = HashMap<String, String>()
-        var n = 0
-        ZipInputStream(input.buffered()).use { z ->
-            while (true) {
-                val e = z.nextEntry ?: break
-                val path = e.name.replace('\\', '/').trimStart('/')
-                if (path.split('/').any { it == ".." }) continue
-                if (path == META) { incoming = try { JSONObject(z.readBytes().decodeToString()) } catch (_: Exception) { JSONObject() }; continue }
-                val target = File(r, path)
-                if (e.isDirectory) { target.mkdirs(); continue }
-                if (!path.endsWith(EXT, ignoreCase = true)) continue
-                target.parentFile?.mkdirs()
-                val dest = unique(target.parentFile!!, target.name, false)
-                dest.outputStream().use { z.copyTo(it) }
-                if (e.time > 0) dest.setLastModified(e.time)
-                renamed[path] = rel(c, dest)
-                n++
-            }
-        }
         for (k in incoming.keys()) {
             if (k.startsWith("#")) continue
             val to = renamed[k] ?: if (File(r, k).isDirectory && !m.has(k)) k else continue
             m.put(to, incoming.get(k))
         }
         store(r)
+    }
+}
+
+object Notes : Library("Notes", ".md", "Untitled note") {
+    override val searchesText = true
+
+    fun newNote(c: Context, dir: File): File {
+        val f = unique(dir, untitled, false)
+        f.writeText("")
+        added(c, f)
+        return f
+    }
+
+    /** The first two lines of text, without markdown marks. */
+    override fun preview(f: File): String {
+        val lines = ArrayList<String>()
+        try {
+            f.bufferedReader().useLines { seq ->
+                for (raw in seq) {
+                    val l = raw.trim()
+                    if (l.isEmpty()) continue
+                    lines += l.replace(Regex("^#{1,6}\\s+"), "")
+                        .replace(Regex("^(?:[-*+]|\\d+[.)])\\s+(?:\\[[ xX]]\\s*)?"), "")
+                        .replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1")
+                        .replace(Regex("\\*\\*|~~|[*_`]"), "")
+                        .replace(Regex("\\\\([\\\\`*_~\\[\\]])"), "$1")
+                    if (lines.size == 2) break
+                }
+            }
+        } catch (_: Exception) {}
+        return lines.joinToString("\n")
+    }
+}
+
+object Sketches : Library("Sketches", ".png", "Untitled sketch")
+
+/** Both libraries in one zip, and back. */
+object Backup {
+    private val libs = listOf("Notes" to Notes, "Sketches" to Sketches)
+
+    /** Every note, sketch and folder, at the highest compression. Returns the items. */
+    fun export(c: Context, out: java.io.OutputStream): Int {
+        var n = 0
+        ZipOutputStream(out.buffered()).use { z ->
+            z.setLevel(Deflater.BEST_COMPRESSION)
+            for ((name, lib) in libs) n += lib.export(c, z, name)
+        }
+        return n
+    }
+
+    /**
+     * Unpacks a backup. Entries under Notes/ or Sketches/ go to that library; a backup
+     * made before sketches has neither, and all of it goes to Notes. Returns the items.
+     */
+    fun import(c: Context, input: java.io.InputStream): Int {
+        for ((_, lib) in libs) lib.importStart()
+        var n = 0
+        ZipInputStream(input.buffered()).use { z ->
+            while (true) {
+                val e = z.nextEntry ?: break
+                val path = e.name.replace('\\', '/').trimStart('/')
+                if (path.split('/').any { it == ".." }) continue
+                val head = path.substringBefore('/')
+                val lib = libs.firstOrNull { it.first == head && path.contains('/') }
+                val (target, rest) = if (lib != null) lib.second to path.substringAfter('/') else Notes to path
+                if (rest.isEmpty()) continue
+                if (target.importEntry(c, rest.trimEnd('/'), e.isDirectory, e.time, z)) n++
+            }
+        }
+        for ((_, lib) in libs) lib.importEnd(c)
         return n
     }
 }

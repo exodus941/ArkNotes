@@ -53,6 +53,41 @@ class Files : ContentProvider() {
 }
 
 /**
+ * A sketch out of the app. [how] "png" saves the file to Downloads as it is, "jpg" saves
+ * it as a JPEG at quality 66, and "external" hands the PNG to another app; each opens the
+ * share sheet.
+ */
+fun shareSketch(a: android.app.Activity, f: File, how: String, note: (String) -> Unit) {
+    val base = f.name.removeSuffix(".png")
+    when (how) {
+        "png" -> {
+            val name = "$base.png"
+            val ok = a.saveAndShare(name, "image/png") { out -> f.inputStream().use { it.copyTo(out) } }
+            note(if (ok) "Saved “$name” to Downloads" else "Couldn’t save “$name” to Downloads")
+        }
+        "jpg" -> {
+            val name = "$base.jpg"
+            val bm = android.graphics.BitmapFactory.decodeFile(f.absolutePath)
+            if (bm == null) { note("Couldn’t read “$base”"); return }
+            val ok = a.saveAndShare(name, "image/jpeg") { out -> bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 66, out) }
+            bm.recycle()
+            note(if (ok) "Saved “$name” to Downloads" else "Couldn’t save “$name” to Downloads")
+        }
+        else -> {
+            val share = File(Files.dir(a), "$base.png")
+            try { f.copyTo(share, overwrite = true) } catch (_: Exception) { note("Couldn’t share “$base”"); return }
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(android.content.Intent.EXTRA_STREAM, Files.uri(share))
+                putExtra(android.content.Intent.EXTRA_SUBJECT, base)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            a.startActivity(android.content.Intent.createChooser(send, null))
+        }
+    }
+}
+
+/**
  * Writes [bytes] to Downloads as [name] and opens the share sheet for it. Android 10+
  * goes through MediaStore, which needs no permission; older phones write the folder.
  */

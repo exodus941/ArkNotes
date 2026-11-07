@@ -2,7 +2,7 @@
 
 ## Tabler Icons 3.19.0
 
-The UI icons in `app/src/main/res/drawable/ic_*.xml` (except `ic_bear.xml`) and the icon symbols in `app/src/main/assets/editor/index.html` are converted from Tabler Icons, https://tabler.io/icons. Icons used: arrow-left, arrows-sort, bold, chevron-down, chevron-right, chevron-up, circle, circle-dot, code, copy, dots, dots-vertical, download, file-plus, folder, folder-plus, folder-up, italic, link, list, list-numbers, pencil, pin, pinned-off, plus, refresh, search, share, strikethrough, toggle-left, toggle-right, trash, upload, x, zoom-in.
+The UI icons in `app/src/main/res/drawable/ic_*.xml` (except `ic_bear.xml`) and the icon symbols in `app/src/main/assets/editor/index.html` are converted from Tabler Icons, https://tabler.io/icons. Icons used: arrow-back-up, arrow-forward-up, arrow-left, arrows-sort, contrast, corner-up-left, eraser, notes, pencil-plus, scribble, bold, chevron-down, chevron-right, chevron-up, circle, circle-dot, code, copy, dots, dots-vertical, download, file-plus, folder, folder-plus, folder-up, italic, link, list, list-numbers, pencil, pin, pinned-off, plus, refresh, search, share, strikethrough, toggle-left, toggle-right, trash, upload, x, zoom-in.
 
 ```
 MIT License

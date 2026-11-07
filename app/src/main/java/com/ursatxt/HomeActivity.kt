@@ -49,8 +49,29 @@ class HomeActivity : Activity() {
     private val openNote = 2
     private val askFiles = 3
 
-    private lateinit var dir: File
-    private var items: List<Notes.Entry> = emptyList()
+    /** One tab: a library, the folder it shows, and its own list. */
+    private inner class Page(val lib: Library) {
+        lateinit var dir: File
+        var items: List<Entry> = emptyList()
+        lateinit var list: ListView
+        val adapter = Adapter(this)
+        val spacer = View(this@HomeActivity).apply { layoutParams = AbsListView.LayoutParams(MATCH_PARENT, 0) }
+        lateinit var empty: TextView
+        lateinit var view: FrameLayout
+        var lastQuery = ""
+    }
+
+    private val pages by lazy { listOf(Page(Notes), Page(Sketches)) }
+    private var cur = 0
+    private val page get() = pages[cur]
+    private val lib get() = page.lib
+    private var dir: File
+        get() = page.dir
+        set(v) { page.dir = v }
+    private val list get() = page.list
+    private lateinit var tabs: LinearLayout
+    private lateinit var tabBar: View
+    private lateinit var pager: Pager
 
     private lateinit var frame: FrameLayout
     private lateinit var content: FrameLayout  // everything the modal dims and blurs
@@ -67,10 +88,6 @@ class HomeActivity : Activity() {
     private lateinit var searchBox: LinearLayout
     private lateinit var searchIcon: ImageView
     private lateinit var clear: ImageView
-    private lateinit var list: ListView
-    private val rows by lazy { Adapter() }
-    private val spacer by lazy { View(this).apply { layoutParams = AbsListView.LayoutParams(MATCH_PARENT, 0) } }
-    private lateinit var empty: TextView
     private lateinit var topFade: Vignette
     private lateinit var bottomFade: Vignette
     private lateinit var modal: Modal
@@ -101,7 +118,7 @@ class HomeActivity : Activity() {
         super.onCreate(b)
         Theme.load(this)
         window.edgeToEdge()
-        dir = Notes.root(this)
+        for (p in pages) p.dir = p.lib.root(this)
         frame = FrameLayout(this)
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content = FrameLayout(this)
@@ -127,28 +144,35 @@ class HomeActivity : Activity() {
         moreBtn = iconButton(R.drawable.ic_more, "Options") { mainMenu(it) }
         header.addView(moreBtn, LinearLayout.LayoutParams(dpi(48), dpi(48)))
         root.addView(header)
+        root.addView(buildTabs(), LinearLayout.LayoutParams(MATCH_PARENT, dpi(48)))
 
         val body = FrameLayout(this)
-        list = ListView(this).apply {
-            divider = null
-            selector = getDrawable(android.R.color.transparent)
-            clipToPadding = false
-            addHeaderView(spacer, null, false)
-            adapter = rows
-            setOnItemClickListener { _, _, pos, _ ->
-                val e = items.getOrNull(pos - headerViewsCount) ?: return@setOnItemClickListener
-                if (e.dir) go(e.file) else edit(e.file)
-            }
-            setOnScrollListener(object : AbsListView.OnScrollListener {
-                override fun onScrollStateChanged(v: AbsListView, s: Int) {
-                    if (s == AbsListView.OnScrollListener.SCROLL_STATE_TOUCH_SCROLL) hideKeyboard()
+        pager = Pager()
+        for (p in pages) {
+            p.view = FrameLayout(this)
+            p.list = ListView(this).apply {
+                divider = null
+                selector = getDrawable(android.R.color.transparent)
+                clipToPadding = false
+                addHeaderView(p.spacer, null, false)
+                adapter = p.adapter
+                setOnItemClickListener { _, _, pos, _ ->
+                    val e = p.items.getOrNull(pos - headerViewsCount) ?: return@setOnItemClickListener
+                    if (e.dir) go(e.file) else open(p, e.file)
                 }
-                override fun onScroll(v: AbsListView, first: Int, count: Int, total: Int) = updateFades()
-            })
+                setOnScrollListener(object : AbsListView.OnScrollListener {
+                    override fun onScrollStateChanged(v: AbsListView, s: Int) {
+                        if (s == AbsListView.OnScrollListener.SCROLL_STATE_TOUCH_SCROLL) hideKeyboard()
+                    }
+                    override fun onScroll(v: AbsListView, first: Int, count: Int, total: Int) = updateFades()
+                })
+            }
+            p.view.addView(p.list, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            p.empty = label("", 15f, Theme.sub()).apply { gravity = Gravity.CENTER_HORIZONTAL; visibility = View.GONE; setPadding(dpi(32), 0, dpi(32), 0) }
+            p.view.addView(p.empty, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP))
+            pager.addView(p.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
-        body.addView(list, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        empty = label("", 15f, Theme.sub()).apply { gravity = Gravity.CENTER_HORIZONTAL; visibility = View.GONE; setPadding(dpi(32), 0, dpi(32), 0) }
-        body.addView(empty, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP))
+        body.addView(pager, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         topFade = Vignette(this, fromBottom = false)
         body.addView(topFade, FrameLayout.LayoutParams(MATCH_PARENT, dpi(96), Gravity.TOP))
         bottomFade = Vignette(this, fromBottom = true)
@@ -176,6 +200,166 @@ class HomeActivity : Activity() {
         Theme.listeners += onTheme
         applyTheme()
         frame.post { askStorage() }
+    }
+
+    // ---- tabs ----
+
+    /**
+     * Yeetlist's band: tabs of equal width, 48 dp tall, the chosen one's label in the text
+     * colour over a 2 dp accent bar on the band's hairline. The bar follows a swipe.
+     */
+    private fun buildTabs(): View {
+        val band = FrameLayout(this)
+        tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(R.drawable.ic_notes to "Notes", R.drawable.ic_sketch to "Sketches").forEachIndexed { k, (icon, name) ->
+            tabs.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = ripple()
+                contentDescription = name
+                addView(ImageView(context).apply { setImageResource(icon); tag = "icon" }, LinearLayout.LayoutParams(dpi(20), dpi(20)))
+                addView(label(name, 14f, Theme.sub(), bold = true).apply { tag = "text"; setPadding(dpi(8), 0, 0, 0) })
+                setOnClickListener { select(k) }
+            }, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
+        }
+        band.addView(tabs, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        band.addView(View(this).apply { tag = "rule" }, FrameLayout.LayoutParams(MATCH_PARENT, dpi(1), Gravity.BOTTOM))
+        tabBar = View(this)
+        band.addView(tabBar, FrameLayout.LayoutParams(0, dpi(2), Gravity.BOTTOM))
+        band.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeTabs(pager.pos) }
+        return band
+    }
+
+    /** [pos] runs 0 (Notes) to 1 (Sketches) as the pages slide. */
+    private fun placeTabs(pos: Float) {
+        val w = tabs.width / pages.size
+        if (tabBar.layoutParams.width != w) { tabBar.layoutParams.width = w; tabBar.requestLayout() }
+        tabBar.translationX = pos * w
+        paintTabs()
+    }
+
+    private fun paintTabs() {
+        if (!::tabs.isInitialized) return
+        val pos = if (::pager.isInitialized) pager.pos else 0f
+        tabBar.setBackgroundColor(Theme.accentInk())
+        (tabBar.parent as View).findViewWithTag<View>("rule").setBackgroundColor(Theme.line())
+        for (k in 0 until tabs.childCount) {
+            val t = tabs.getChildAt(k)
+            // The label goes from grey to the text colour as its page slides in.
+            val on = (1f - kotlin.math.abs(pos - k)).coerceIn(0f, 1f)
+            val ink = android.animation.ArgbEvaluator().evaluate(on, Theme.sub(), Theme.text()) as Int
+            t.findViewWithTag<TextView>("text").setTextColor(ink)
+            t.findViewWithTag<ImageView>("icon").setColorFilter(ink)
+            (t.background as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
+        }
+    }
+
+    /** To tab [k]: the pages slide %ease250%, and the path, search and up button follow it. */
+    private fun select(k: Int) {
+        pager.settle(k)
+    }
+
+    /** Called once a slide lands on [k]. */
+    private fun landed(k: Int) {
+        if (k == cur) return
+        closeDial()
+        hideKeyboard()
+        cur = k
+        if (search.text.isNotEmpty()) search.setText("")
+        search.hint = if (lib === Notes) "Search notes" else "Search sketches"
+        buildCrumbs(dir)
+        val inside = dir != lib.root(this)
+        showCrumbs(inside)
+        showUp(inside)
+        refresh()
+    }
+
+    /**
+     * The two pages side by side. A sideways drag that beats the vertical one by 2 to 1
+     * moves them under the finger; letting go lands on the nearer page, or the one a
+     * fling points to, over %ease250%.
+     */
+    private inner class Pager : FrameLayout(this@HomeActivity) {
+        var pos = 0f; private set
+        private var downX = 0f
+        private var downY = 0f
+        private var from = 0f
+        private var dragging = false
+        private var vel: android.view.VelocityTracker? = null
+        private var anim: ValueAnimator? = null
+        private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            super.onLayout(changed, l, t, r, b)
+            arrange()
+        }
+
+        private fun arrange() {
+            for (k in 0 until childCount) getChildAt(k).translationX = (k - pos) * width
+            placeTabs(pos)
+        }
+
+        private fun moveTo(p: Float) { pos = p.coerceIn(0f, (childCount - 1).toFloat()); arrange() }
+
+        fun settle(k: Int) {
+            anim?.cancel()
+            val to = k.toFloat()
+            if (pos == to) { landed(k); return }
+            anim = ValueAnimator.ofFloat(pos, to).apply {
+                duration = (Motion.MS * kotlin.math.abs(to - pos)).toLong().coerceAtLeast(120)
+                interpolator = Motion.IN
+                addUpdateListener { moveTo(it.animatedValue as Float) }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(a: android.animation.Animator) { if (pos == to) landed(k) }
+                })
+                start()
+            }
+        }
+
+        /** True once a move is a sideways drag. Both paths ask it: a touch on a card
+         *  reaches the pager through interception, a touch on empty space directly. */
+        private fun startsDrag(e: android.view.MotionEvent): Boolean {
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downX = e.x; downY = e.y; dragging = false
+                    vel?.recycle(); vel = android.view.VelocityTracker.obtain(); vel?.addMovement(e)
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    vel?.addMovement(e)
+                    val dx = e.x - downX; val dy = e.y - downY
+                    if (kotlin.math.abs(dx) > slop && kotlin.math.abs(dx) > 2 * kotlin.math.abs(dy)) {
+                        dragging = true; anim?.cancel(); from = pos; downX = e.x
+                        closeDial(); hideKeyboard()
+                        return true
+                    }
+                }
+            }
+            return false
+        }
+
+        override fun onInterceptTouchEvent(e: android.view.MotionEvent) = startsDrag(e)
+
+        @android.annotation.SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+            if (!dragging) { startsDrag(e); return true }
+            vel?.addMovement(e)
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_MOVE -> moveTo(from - (e.x - downX) / width)
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
+                    vel?.computeCurrentVelocity(1000)
+                    val v = vel?.xVelocity ?: 0f
+                    val fling = dp(600f)
+                    val k = when {
+                        v < -fling -> kotlin.math.ceil(pos.toDouble()).toInt()
+                        v > fling -> kotlin.math.floor(pos.toDouble()).toInt()
+                        else -> kotlin.math.round(pos).toInt()
+                    }.coerceIn(0, childCount - 1)
+                    settle(k)
+                }
+            }
+            return true
+        }
     }
 
     private fun iconButton(icon: Int, name: String, act: (View) -> Unit) = ImageView(this).apply {
@@ -245,11 +429,13 @@ class HomeActivity : Activity() {
     /** List starts under the sticky block; the top vignette hangs from its lower edge. */
     private fun place() {
         val h = sticky.height
-        if (spacer.layoutParams.height != h) { spacer.layoutParams.height = h; spacer.requestLayout() }
-        // Room under the last card for the + button, so it never hides it.
-        list.setPadding(0, 0, 0, bottomInset + fabRoom)
+        for (p in pages) {
+            if (p.spacer.layoutParams.height != h) { p.spacer.layoutParams.height = h; p.spacer.requestLayout() }
+            // Room under the last card for the + button, so it never hides it.
+            p.list.setPadding(0, 0, 0, bottomInset + fabRoom)
+            p.empty.translationY = h + dp(24f)
+        }
         topFade.translationY = h.toFloat()
-        empty.translationY = h + dp(24f)
         val fadeH = dpi(48) + bottomInset
         if (bottomFade.layoutParams.height != fadeH) { bottomFade.layoutParams.height = fadeH; bottomFade.requestLayout() }
         updateFades()
@@ -281,17 +467,20 @@ class HomeActivity : Activity() {
         searchIcon.setColorFilter(Theme.sub())
         search.setTextColor(Theme.text())
         search.setHintTextColor(Theme.sub())
-        empty.setTextColor(Theme.sub())
         paintCrumbs()
         paintFab()
-        for (i in 0 until list.childCount) paintCard(list.getChildAt(i))
+        paintTabs()
+        for (p in pages) {
+            p.empty.setTextColor(Theme.sub())
+            for (i in 0 until p.list.childCount) paintCard(p.list.getChildAt(i))
+        }
         topFade.invalidate(); bottomFade.invalidate()
         Theme.applyBars(window)
     }
 
     // ---- where we are ----
 
-    private fun atRoot() = dir == Notes.root(this)
+    private fun atRoot() = dir == lib.root(this)
 
     /** Into [to], with the list fading out and back in, 250 ms in all. */
     private fun go(to: File) {
@@ -303,13 +492,13 @@ class HomeActivity : Activity() {
         list.animate().cancel()
         list.animate().alpha(0f).setDuration(Motion.MS / 2).setInterpolator(Motion.FADE).withEndAction {
             dir = to
-            Notes.touch(this, to)
+            lib.touch(this, to)
             refresh()
             list.setSelection(0)
             list.animate().alpha(1f).setDuration(Motion.MS / 2).setInterpolator(Motion.FADE).start()
         }.start()
         buildCrumbs(to)
-        if (wasRoot != (to == Notes.root(this))) {
+        if (wasRoot != (to == lib.root(this))) {
             showCrumbs(wasRoot)
             showUp(wasRoot)
         }
@@ -319,7 +508,7 @@ class HomeActivity : Activity() {
 
     private fun buildCrumbs(at: File) {
         crumbs.removeAllViews()
-        val r = Notes.root(this)
+        val r = lib.root(this)
         val chain = ArrayList<File>()
         var f: File? = at
         while (f != null && f != r) { chain.add(0, f); f = f.parentFile }
@@ -358,6 +547,7 @@ class HomeActivity : Activity() {
         val from = lp.height
         val full = dpi(CRUMB_H + CRUMB_GAP)
         val to = if (show) full else 0
+        if (from == to && crumbAnim?.isRunning != true) return
         crumbAnim?.cancel()
         crumbAnim = ValueAnimator.ofInt(from, to).apply {
             duration = Motion.MS
@@ -373,27 +563,36 @@ class HomeActivity : Activity() {
 
     // ---- the list ----
 
-    private fun refresh() {
-        if (!dir.exists()) dir = Notes.root(this)
-        val q = search.text.toString().trim()
-        clear.fade(search.text.isNotEmpty())
-        val all = if (q.isEmpty()) Notes.list(this, dir) else Notes.search(this, dir, q)
-        items = sorted(all)
-        empty.text = when {
-            q.isNotEmpty() && items.isEmpty() -> "No notes contain “$q”"
-            items.isEmpty() -> if (atRoot()) "No notes yet. Tap + to write one." else "This folder is empty."
+    /** Lists [p]'s folder; search narrows only the tab on screen. */
+    private fun refresh(p: Page = page) {
+        val lib = p.lib
+        if (!p.dir.exists()) p.dir = lib.root(this)
+        val q = if (p === page) search.text.toString().trim() else ""
+        if (p === page) clear.fade(search.text.isNotEmpty())
+        val all = if (q.isEmpty()) lib.list(this, p.dir) else lib.search(this, p.dir, q)
+        p.items = sorted(all)
+        val what = if (lib === Notes) "notes" else "sketches"
+        p.empty.text = when {
+            q.isNotEmpty() && p.items.isEmpty() -> if (lib === Notes) "No notes contain “$q”" else "No sketch names contain “$q”"
+            p.items.isEmpty() -> if (p.dir == lib.root(this)) {
+                if (lib === Notes) "No notes yet. Tap + to write one." else "No sketches yet. Tap + to draw one."
+            } else "This folder has no $what."
             else -> ""
         }
-        empty.fade(empty.text.isNotEmpty())
-        rows.notifyDataSetChanged()
-        if (q != lastQuery) list.setSelection(0)
-        lastQuery = q
-        list.post { updateFades() }
+        p.empty.fade(p.empty.text.isNotEmpty())
+        p.adapter.notifyDataSetChanged()
+        if (q != p.lastQuery) p.list.setSelection(0)
+        p.lastQuery = q
+        p.list.post { updateFades() }
     }
-    private var lastQuery = ""
 
-    private fun sorted(all: List<Notes.Entry>): List<Notes.Entry> {
-        val by: Comparator<Notes.Entry> = when (sortKey) {
+    private fun refreshAll() { for (p in pages) refresh(p) }
+
+    /** A note opens in the editor, a sketch on the canvas. */
+    private fun open(p: Page, f: File) = if (p.lib === Notes) edit(f) else sketch(f, new = false)
+
+    private fun sorted(all: List<Entry>): List<Entry> {
+        val by: Comparator<Entry> = when (sortKey) {
             "name" -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
             "added" -> compareBy { it.added }
             "size" -> compareBy { it.size }
@@ -401,7 +600,7 @@ class HomeActivity : Activity() {
         }
         val dirBy = if (ascending) by else by.reversed()
         // Pinned notes stay on top; then folders, when Folders First is on.
-        var c = compareByDescending<Notes.Entry> { it.pinned }
+        var c = compareByDescending<Entry> { it.pinned }
         if (foldersFirst) c = c.thenByDescending { it.dir }
         return all.sortedWith(c.then(dirBy).thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
@@ -430,7 +629,7 @@ class HomeActivity : Activity() {
             },
             Menu.Row("Folders First", on = { foldersFirst }) {
                 foldersFirst = !foldersFirst
-                refresh()
+                refreshAll()
                 note(if (foldersFirst) "Folders First on" else "Folders First off")
             },
             Menu.Row("Export Notes", icon = R.drawable.ic_download) { exportAll() },
@@ -444,10 +643,10 @@ class HomeActivity : Activity() {
 
     private fun sortMenu(anchor: View) {
         fun key(k: String, t: String) = Menu.Row(t, mark = { if (sortKey == k) R.drawable.ic_radio_on else R.drawable.ic_radio_off }, stay = true) {
-            sortKey = k; refresh()
+            sortKey = k; refreshAll()
         }
         fun way(asc: Boolean, t: String) = Menu.Row(t, mark = { if (ascending == asc) R.drawable.ic_radio_on else R.drawable.ic_radio_off }, stay = true) {
-            ascending = asc; refresh()
+            ascending = asc; refreshAll()
         }
         val rows = listOf(
             key("name", "Name"), key("opened", "Date Accessed"), key("added", "Date Added"), key("size", "Size"),
@@ -459,23 +658,23 @@ class HomeActivity : Activity() {
         menu.show(rows, Gravity.TOP or Gravity.END, dpi(60), at[1])
     }
 
-    private fun cardMenu(anchor: View, e: Notes.Entry) {
-        val kind = if (e.dir) "folder" else "note"
+    private fun cardMenu(anchor: View, e: Entry) {
+        val kind = if (e.dir) "folder" else if (lib === Notes) "note" else "sketch"
         val rows = listOf(
             Menu.Row(if (e.pinned) "Unpin" else "Pin", icon = if (e.pinned) R.drawable.ic_unpin else R.drawable.ic_pin) {
-                Notes.setPin(this, e.file, !e.pinned)
+                lib.setPin(this, e.file, !e.pinned)
                 refresh()
                 note(if (e.pinned) "Unpinned “${e.name}”" else "Pinned “${e.name}”")
             },
             Menu.Row("Rename", icon = R.drawable.ic_rename) { rename(e) },
             Menu.Row("Move/Copy", icon = R.drawable.ic_copy) { moveCopy(e) },
         ) + (if (e.dir) emptyList() else listOf(
-            Menu.Row("Share", icon = R.drawable.ic_share) { shareMenu(anchor, e) },
+            Menu.Row("Share", icon = R.drawable.ic_share) { if (lib === Notes) shareMenu(anchor, e) else sketchShare(anchor, e) },
         )) + listOf(
             Menu.Row("Delete", icon = R.drawable.ic_delete) {
                 val what = if (e.dir) "“${e.name}” and everything in it will be deleted from this device." else "“${e.name}” will be deleted from this device."
                 modal.confirm("Delete $kind?", "$what This cannot be undone.", "Delete") {
-                    if (Notes.delete(this, e.file)) { refresh(); note("Deleted “${e.name}”") } else note("Couldn’t delete “${e.name}”")
+                    if (lib.delete(this, e.file)) { refresh(); note("Deleted “${e.name}”") } else note("Couldn’t delete “${e.name}”")
                 }
             },
         )
@@ -492,7 +691,7 @@ class HomeActivity : Activity() {
      * The card menu's place taken by the editor's share menu, the same formats and
      * words. Return, or the Back button, puts the card menu back.
      */
-    private fun shareMenu(anchor: View, e: Notes.Entry) {
+    private fun shareMenu(anchor: View, e: Entry) {
         val back = { cardMenu(anchor, e) }
         fun md() = try { e.file.readText() } catch (_: Exception) { "" }
         fun file(ext: String) = "${e.name.replace(Regex("[\\\\/:*?\"<>|]"), " ").trim().take(60).ifEmpty { "Untitled note" }}.$ext"
@@ -523,6 +722,20 @@ class HomeActivity : Activity() {
         menuBack = back
     }
 
+    /** A sketch's share menu: PNG and JPG save to Downloads and open the share sheet. */
+    private fun sketchShare(anchor: View, e: Entry) {
+        val back = { cardMenu(anchor, e) }
+        val rows = listOf(
+            Menu.Row("Return", icon = R.drawable.ic_back) { back() },
+            Menu.Row("PNG", icon = R.drawable.ic_download) { shareSketch(this, e.file, "png", note = { note(it) }) },
+            Menu.Row("JPG", icon = R.drawable.ic_download) { shareSketch(this, e.file, "jpg", note = { note(it) }) },
+            Menu.Row("External", icon = R.drawable.ic_share) { shareSketch(this, e.file, "external", note = { note(it) }) },
+        )
+        val at = IntArray(2).also { anchor.getLocationInWindow(it) }
+        menu.show(rows, Gravity.TOP or Gravity.END, dpi(12), at[1])
+        menuBack = back
+    }
+
     private fun sendText(text: String, title: String) {
         val i = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -532,12 +745,14 @@ class HomeActivity : Activity() {
         startActivity(Intent.createChooser(i, null))
     }
 
-    private fun rename(e: Notes.Entry) {
-        modal.input(if (e.dir) "Rename folder" else "Rename note", e.name, "Rename") { raw ->
+    private val kindName get() = if (lib === Notes) "note" else "sketch"
+
+    private fun rename(e: Entry) {
+        modal.input(if (e.dir) "Rename folder" else "Rename $kindName", e.name, "Rename") { raw ->
             if (raw.isEmpty() || raw == e.name) return@input
-            val to = Notes.rename(this, e.file, raw)
+            val to = lib.rename(this, e.file, raw)
             refresh()
-            note("Renamed to “${to.name.removeSuffix(Notes.EXT)}”")
+            note("Renamed to “${to.name.removeSuffix(lib.EXT)}”")
         }
     }
 
@@ -545,21 +760,21 @@ class HomeActivity : Activity() {
 
     private var tree: Tree? = null
 
-    private fun moveCopy(e: Notes.Entry) {
-        val t = Tree(this, Notes.root(this), e.file)
+    private fun moveCopy(e: Entry) {
+        val t = Tree(this, lib, lib.root(this), e.file)
         tree = t
         modal.custom("Move/Copy", t.view) { row, make, close ->
             val copy = make("Copy", Theme.accentInk()) {
                 val into = t.picked ?: return@make
                 close()
-                val done = Notes.copy(this, e.file, into)
+                val done = lib.copy(this, e.file, into)
                 refresh()
                 note(if (done != null) "Copied “${e.name}” to ${where(into)}" else "Couldn’t copy “${e.name}”")
             }
             val move = make("Move", Theme.accentInk()) {
                 val into = t.picked ?: return@make
                 close()
-                val done = Notes.move(this, e.file, into)
+                val done = lib.move(this, e.file, into)
                 refresh()
                 note(if (done != null) "Moved “${e.name}” to ${where(into)}" else "Couldn’t move “${e.name}”")
             }
@@ -578,11 +793,11 @@ class HomeActivity : Activity() {
             copy.alpha = 0.38f; move.alpha = 0.38f; copy.isEnabled = false; move.isEnabled = false
             t.onPick = { enable() }
             // The tree opens on the folder the item is in, with Create New Folder Here under it.
-            t.pick(e.file.parentFile ?: Notes.root(this))
+            t.pick(e.file.parentFile ?: lib.root(this))
         }
     }
 
-    private fun where(f: File) = if (f == Notes.root(this)) "Root" else "“${f.name}”"
+    private fun where(f: File) = if (f == lib.root(this)) "Root" else "“${f.name}”"
 
     // ---- the + button ----
 
@@ -611,8 +826,9 @@ class HomeActivity : Activity() {
             visibility = View.INVISIBLE
         }
         val newNote = small(R.drawable.ic_note_plus, "New Note") { closeDial(); makeNote() }
+        val newSketch = small(R.drawable.ic_sketch_plus, "New Sketch") { closeDial(); makeSketch() }
         val newFolder = small(R.drawable.ic_folder_plus, "New Folder") { closeDial(); makeFolder() }
-        dial = listOf(newNote to tag("New Note"), newFolder to tag("New Folder"))
+        dial = listOf(newNote to tag("New Note"), newSketch to tag("New Sketch"), newFolder to tag("New Folder"))
         for ((b, t) in dial) {
             b.alpha = 0f; b.visibility = View.INVISIBLE
             content.addView(t, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END))
@@ -674,8 +890,8 @@ class HomeActivity : Activity() {
     private fun slot(k: Int) = -(dp(56f) + dp(16f) + k * dp(60f) - dp(6f))
 
     private fun placeDial(t: Float) {
-        // The up button sits in slot 0 while closed and is pushed up two slots as the dial opens.
-        upBtn.translationY = slot(0) + (slot(2) - slot(0)) * t
+        // The up button sits in slot 0 while closed and is pushed up past the dial as it opens.
+        upBtn.translationY = slot(0) + (slot(dial.size) - slot(0)) * t
     }
 
     private var dialAnim: ValueAnimator? = null
@@ -757,13 +973,27 @@ class HomeActivity : Activity() {
     // ---- making things ----
 
     private fun makeNote() {
-        val f = Notes.newNote(this, dir)
+        val f = Notes.newNote(this, pages[0].dir)
         edit(f)
+    }
+
+    /** The file is named now and written on the first stroke; a sketch left blank is never made. */
+    private fun makeSketch() {
+        val d = pages[1].dir
+        sketch(Sketches.unique(d, Sketches.untitled, false), new = true)
+    }
+
+    private fun sketch(f: File, new: Boolean) {
+        closeDial()
+        hideKeyboard()
+        @Suppress("DEPRECATION")
+        startActivityForResult(Intent(this, SketchActivity::class.java).putExtra("path", f.absolutePath).putExtra("new", new), openNote)
+        @Suppress("DEPRECATION") overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
     private fun makeFolder() {
         modal.input("New folder", "New Folder", "Create") { raw ->
-            val f = Notes.newFolder(this, dir, raw.ifEmpty { "New Folder" })
+            val f = lib.newFolder(this, dir, raw.ifEmpty { "New Folder" })
             refresh()
             note("Created “${f.name}”")
         }
@@ -782,11 +1012,11 @@ class HomeActivity : Activity() {
     private fun exportAll() {
         val name = "UrsaNotes-" + SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date()) + ".zip"
         var n = 0
-        val ok = saveAndShare(name, "application/zip") { n = Notes.export(this, it) }
+        val ok = saveAndShare(name, "application/zip") { n = Backup.export(this, it) }
         note(if (ok) "Exported ${count(n)} to Downloads as $name" else "Couldn’t save the backup to Downloads")
     }
 
-    private fun count(n: Int) = if (n == 1) "1 note" else "$n notes"
+    private fun count(n: Int) = if (n == 1) "1 item" else "$n items"
 
     private fun importPick() {
         val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -801,7 +1031,7 @@ class HomeActivity : Activity() {
     // ---- storage access ----
 
     private fun askStorage() {
-        if (Notes.shared() && (Build.VERSION.SDK_INT >= 30 || checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED)) return
+        if (Store.shared() && (Build.VERSION.SDK_INT >= 30 || checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED)) return
         if (prefs.getBoolean("askedFiles", false)) return
         prefs.edit().putBoolean("askedFiles", true).apply()
         modal.choose("Keep notes in Documents?",
@@ -818,7 +1048,7 @@ class HomeActivity : Activity() {
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
-        if (code == askFiles) { dir = Notes.root(this); refresh() }
+        if (code == askFiles) { for (p in pages) p.dir = p.lib.root(this); refreshAll() }
     }
 
     // ---- system ----
@@ -851,10 +1081,13 @@ class HomeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        val r = Notes.root(this)
-        if (!dir.absolutePath.startsWith(r.absolutePath)) { dir = r; buildCrumbs(r); showCrumbs(false); showUp(false) }
-        Notes.sweep(this, dir)
-        refresh()
+        for (p in pages) {
+            val r = p.lib.root(this)
+            if (!p.dir.absolutePath.startsWith(r.absolutePath)) p.dir = r
+        }
+        buildCrumbs(dir); showCrumbs(dir != lib.root(this)); showUp(dir != lib.root(this))
+        Notes.sweep(this, pages[0].dir)
+        refreshAll()
         Updater.resumed(this, home = true)
     }
 
@@ -867,26 +1100,26 @@ class HomeActivity : Activity() {
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(req, res, data)
-        if (req == openNote) { data?.getStringExtra("note")?.let { note(it) }; refresh(); return }
+        if (req == openNote) { data?.getStringExtra("note")?.let { note(it) }; refreshAll(); return }
         val uri = data?.data
         if (req == pickZip && res == RESULT_OK && uri != null) {
-            val n = try { contentResolver.openInputStream(uri)?.use { Notes.import(this, it) } ?: -1 } catch (_: Exception) { -1 }
-            refresh()
+            val n = try { contentResolver.openInputStream(uri)?.use { Backup.import(this, it) } ?: -1 } catch (_: Exception) { -1 }
+            refreshAll()
             note(if (n >= 0) "Imported ${count(n)}" else "Couldn’t read that file as an UrsaNotes backup")
         }
     }
 
     // ---- cards ----
 
-    private inner class Adapter : BaseAdapter() {
-        override fun getCount() = items.size
-        override fun getItem(p: Int): Any = items[p]
+    private inner class Adapter(val pg: Page) : BaseAdapter() {
+        override fun getCount() = pg.items.size
+        override fun getItem(p: Int): Any = pg.items[p]
         override fun getItemId(p: Int) = p.toLong()
         override fun getViewTypeCount() = 2
-        override fun getItemViewType(p: Int) = if (items[p].dir) 0 else 1
+        override fun getItemViewType(p: Int) = if (pg.items[p].dir) 0 else 1
 
         override fun getView(p: Int, convert: View?, parent: ViewGroup): View {
-            val e = items[p]
+            val e = pg.items[p]
             val card = (convert as? FrameLayout) ?: card(e.dir)
             card.tag = e
             val box = card.getChildAt(0) as LinearLayout
@@ -896,7 +1129,8 @@ class HomeActivity : Activity() {
             box.findViewWithTag<View>("pin").visibility = if (e.pinned) View.VISIBLE else View.GONE
             if (e.dir) {
                 val parts = ArrayList<String>()
-                parts += if (e.notes == 1) "1 note" else "${e.notes} notes"
+                val (one, many) = if (pg.lib === Notes) "note" to "notes" else "sketch" to "sketches"
+                parts += if (e.notes == 1) "1 $one" else "${e.notes} $many"
                 if (e.folders > 0) parts += if (e.folders == 1) "1 folder" else "${e.folders} folders"
                 (texts.getChildAt(1) as TextView).text = parts.joinToString("  ·  ")
             } else {
@@ -949,7 +1183,7 @@ class HomeActivity : Activity() {
                 setImageResource(R.drawable.ic_more)
                 background = ripple()
                 setPadding(dpi(12), dpi(12), dpi(12), dpi(12))
-                contentDescription = if (folder) "Folder options" else "Note options"
+                contentDescription = if (folder) "Folder options" else if (pg.lib === Notes) "Note options" else "Sketch options"
                 isFocusable = false
                 tag = "more"
             }, LinearLayout.LayoutParams(dpi(48), dpi(48)).apply { marginEnd = dpi(4) })
@@ -964,7 +1198,7 @@ class HomeActivity : Activity() {
 
     private fun paintCard(v: View) {
         val card = v as? FrameLayout ?: return
-        val e = card.tag as? Notes.Entry ?: return
+        val e = card.tag as? Entry ?: return
         val box = card.getChildAt(0) as LinearLayout
         box.background = pill(Theme.card(), 12f)
         (box.foreground as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
