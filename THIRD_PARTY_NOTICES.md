@@ -1,9 +1,5 @@
 # Third-party notices
 
-## Five by Five, by jeti
-
-The "TXT" lettering in the launcher icon (`app/src/main/res/drawable/ic_bear.xml`) is drawn from the Five by Five pixel font by jeti, https://fontenddev.com/fonts/five-by-five/, licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. The glyphs were copied as pixel rectangles; the font file is not shipped.
-
 ## Tabler Icons 3.19.0
 
 The UI icons in `app/src/main/res/drawable/ic_*.xml` (except `ic_bear.xml`) and the icon symbols in `app/src/main/assets/editor/index.html` are converted from Tabler Icons, https://tabler.io/icons. Icons used: arrow-left, arrows-sort, bold, chevron-down, chevron-right, chevron-up, circle, circle-dot, code, copy, dots, dots-vertical, download, file-plus, folder, folder-plus, folder-up, italic, link, list, list-numbers, pencil, pin, pinned-off, plus, refresh, search, share, strikethrough, toggle-left, toggle-right, trash, upload, x, zoom-in.

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Bear head, and under it a box reading TXT in Five by Five by jeti (CC BY 4.0),
-     the product mark for this Ursa app. Bear: 74.3% scale, top at y 25.2, head ends
-     at y 60.8. Box: y 64.8 to 79.5, so 4.0 units clear of the head. Text padding is
-     4.2 sideways and 2.6 up and down, which reads as even. Farthest points sit 31.8
-     from the centre, inside the 33-unit safe circle. -->
+<!-- Bear head holding a pencil in its mouth, the product mark for UrsaNotes. Scaled 110%
+     about the artwork's centre and moved 1 unit down, so the top and bottom margins are
+     equal. Pencil: 4 units thick and 52 long, with an amber gap where it crosses the head;
+     the snout sits on top of it with no gap. Farthest points are inside the 33-unit safe
+     circle. Keep in step with docs/icon.svg. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -11,26 +11,32 @@
     android:viewportHeight="108">
     <group
         android:pivotX="54"
-        android:pivotY="31"
-        android:scaleX="0.7434"
-        android:scaleY="0.7434"
-        android:translateY="-5.85">
+        android:pivotY="53"
+        android:scaleX="1.1"
+        android:scaleY="1.1"
+        android:translateY="1">
         <path
             android:fillColor="#FF121212"
-            android:pathData="M30,40a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M60,40a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M32,58a22,21 0 1,0 44,0a22,21 0 1,0 -44,0z" />
+            android:pathData="M30,38a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M60,38a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M32,56a22,21 0 1,0 44,0a22,21 0 1,0 -44,0z" />
         <path
             android:fillColor="#FFFFB300"
-            android:pathData="M44,64a10,8 0 1,0 20,0a10,8 0 1,0 -20,0z M43,52a3,3 0 1,0 6,0a3,3 0 1,0 -6,0z M59,52a3,3 0 1,0 6,0a3,3 0 1,0 -6,0z" />
+            android:pathData="M43,50a3,3 0 1,0 6,0a3,3 0 1,0 -6,0z M59,50a3,3 0 1,0 6,0a3,3 0 1,0 -6,0z" />
+        <!-- The gap round the pencil, then the pencil: eraser, body, tip. -->
+        <path
+            android:fillColor="#FFFFB300"
+            android:strokeColor="#FFFFB300"
+            android:strokeWidth="2.8"
+            android:strokeLineJoin="round"
+            android:pathData="M29,63.5h2.6v4h-2.6a1,1 0 0 1 -1,-1v-2a1,1 0 0 1 1,-1z M32.8,63.5h40.2v4h-40.2z M74.1,63.5l5.9,2l-5.9,2z" />
         <path
             android:fillColor="#FF121212"
-            android:pathData="M50,62a4,3 0 1,0 8,0a4,3 0 1,0 -8,0z" />
+            android:pathData="M29,63.5h2.6v4h-2.6a1,1 0 0 1 -1,-1v-2a1,1 0 0 1 1,-1z M32.8,63.5h40.2v4h-40.2z M74.1,63.5l5.9,2l-5.9,2z" />
+        <!-- Snout and nose, over the pencil. -->
+        <path
+            android:fillColor="#FFFFB300"
+            android:pathData="M44,62a10,8 0 1,0 20,0a10,8 0 1,0 -20,0z" />
+        <path
+            android:fillColor="#FF121212"
+            android:pathData="M50,60a4,3 0 1,0 8,0a4,3 0 1,0 -8,0z" />
     </group>
-    <!-- Box 40.5 x 14.7 with a 2-unit corner. -->
-    <path
-        android:fillColor="#FF121212"
-        android:pathData="M35.73,64.83h36.53a2.0,2.0 0 0 1 2.0,2.0v10.70a2.0,2.0 0 0 1 -2.0,2.0h-36.53a2.0,2.0 0 0 1 -2.0,-2.0v-10.70a2.0,2.0 0 0 1 2.0,-2.0z" />
-    <!-- T X T, 5 x 5 cells of 1.89, one cell apart. -->
-    <path
-        android:fillColor="#FFFFB300"
-        android:pathData="M37.94,67.45h9.45v1.89h-9.45zM41.72,69.34h1.89v1.89h-1.89zM41.72,71.23h1.89v1.89h-1.89zM41.72,73.12h1.89v1.89h-1.89zM41.72,75.01h1.89v1.89h-1.89zM49.28,67.45h1.89v1.89h-1.89zM56.84,67.45h1.89v1.89h-1.89zM51.17,69.34h1.89v1.89h-1.89zM54.95,69.34h1.89v1.89h-1.89zM53.06,71.23h1.89v1.89h-1.89zM51.17,73.12h1.89v1.89h-1.89zM54.95,73.12h1.89v1.89h-1.89zM49.28,75.01h1.89v1.89h-1.89zM56.84,75.01h1.89v1.89h-1.89zM60.62,67.45h9.45v1.89h-9.45zM64.40,69.34h1.89v1.89h-1.89zM64.40,71.23h1.89v1.89h-1.89zM64.40,73.12h1.89v1.89h-1.89zM64.40,75.01h1.89v1.89h-1.89z" />
 </vector>

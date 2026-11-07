@@ -1,4 +1,4 @@
-<img src="docs/icon.svg" width="128" height="128" alt="UrsaTXT icon: a black bear head over a box reading TXT, on amber">
+<img src="docs/icon.svg" width="128" height="128" alt="UrsaNotes icon: a black bear head holding a black pencil in its mouth, on amber">
 
 # UrsaTXT
 
@@ -28,6 +28,5 @@ Push a tag `vX.Y.Z`. The workflow builds a signed APK, attaches it to a GitHub r
 ## Credits
 
 - **[Tabler Icons](https://tabler.io/icons)** by Paweł Kuna, MIT licence: every icon in the app. Converted to Android vectors with `tools/svg2vd.py`.
-- **[Five by Five](https://fontenddev.com/fonts/five-by-five/)** by jeti, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): the "TXT" lettering in the app icon.
 
 Full licence texts are in `THIRD_PARTY_NOTICES.md`.
