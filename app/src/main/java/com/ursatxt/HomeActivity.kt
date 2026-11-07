@@ -79,7 +79,6 @@ class HomeActivity : Activity() {
     private val onTheme: () -> Unit = { applyTheme() }
 
     // The + button and what it opens.
-    private lateinit var glow: Glow
     private lateinit var fab: FrameLayout
     private lateinit var fabIcon: ImageView
     private lateinit var upBtn: ImageView
@@ -167,7 +166,7 @@ class HomeActivity : Activity() {
             @Suppress("DEPRECATION")
             val ime = if (Build.VERSION.SDK_INT >= 30) ins.getInsets(WindowInsets.Type.ime()).bottom else ins.systemWindowInsetBottom
             bottomInset = maxOf(s[3], ime)
-            fabInsets(s[2], s[3])
+            fabInsets(s[2], s[3], barBelow(ins, s[3]))
             place()
             ins
         }
@@ -588,9 +587,6 @@ class HomeActivity : Activity() {
     // ---- the + button ----
 
     private fun buildFab() {
-        glow = Glow(this, 56f)
-        val reach = glow.reach()
-        content.addView(glow, FrameLayout.LayoutParams(dpi(56) + 2 * reach, dpi(56) + 2 * reach, Gravity.BOTTOM or Gravity.END))
         catcher = View(this).apply {
             visibility = View.GONE
             isClickable = true
@@ -648,17 +644,22 @@ class HomeActivity : Activity() {
      * Where the + sits, from the cards' ⋮ column rather than a fixed corner gap. The list
      * keeps room under its last card for the button, so it never covers a card's ⋮.
      */
-    private fun fabInsets(end: Int, bottom: Int) {
+    /** How much of the bottom a navigation bar with buttons takes; a gesture line takes none. */
+    private fun barBelow(ins: WindowInsets, bottom: Int): Int = when {
+        Build.VERSION.SDK_INT >= 30 -> ins.getInsets(WindowInsets.Type.tappableElement()).bottom
+        Build.VERSION.SDK_INT >= 29 -> @Suppress("DEPRECATION") ins.tappableElementInsets.bottom
+        else -> bottom
+    }
+
+    private fun fabInsets(end: Int, bottom: Int, bar: Int) {
         // Sideways it stays clear of the cards' ⋮ buttons: each is a 48 dp target whose right
         // edge is 20 dp from the screen's (16 dp card inset + 4 dp), so the + ends 8 dp to its
         // left, 76 dp in.
-        // The same 76 dp from the bottom as from the right edge, or 16 dp over the
-        // navigation bar where that is taller.
-        fabEnd = end + dpi(16 + 4 + 48 + 8); fabBottom = maxOf(dpi(76), bottom + dpi(16))
+        // The same 76 dp up from the bottom: from the top of a button bar, which ends the
+        // visible screen, or from the screen's edge under a gesture line.
+        fabEnd = end + dpi(16 + 4 + 48 + 8); fabBottom = bar + dpi(76)
         fabRoom = fabBottom - bottom + dpi(56) + dpi(16)
-        val reach = glow.reach()
         (fab.layoutParams as FrameLayout.LayoutParams).apply { marginEnd = fabEnd; bottomMargin = fabBottom; rightMargin = fabEnd }
-        (glow.layoutParams as FrameLayout.LayoutParams).apply { marginEnd = fabEnd - reach; rightMargin = fabEnd - reach; bottomMargin = fabBottom - reach }
         // The small buttons centre on the + button's column.
         val sEnd = fabEnd + dpi(6)
         for ((b, t) in dial + listOf(upBtn to null)) {
@@ -751,7 +752,6 @@ class HomeActivity : Activity() {
             t.setTextColor(Theme.text())
             t.background = pill(Theme.popup(), 10f).apply { setStroke(dpi(1), Theme.outline()) }
         }
-        glow.invalidate()
     }
 
     // ---- making things ----
@@ -855,13 +855,11 @@ class HomeActivity : Activity() {
         if (!dir.absolutePath.startsWith(r.absolutePath)) { dir = r; buildCrumbs(r); showCrumbs(false); showUp(false) }
         Notes.sweep(this, dir)
         refresh()
-        glow.start()
         Updater.resumed(this, home = true)
     }
 
     override fun onPause() {
         super.onPause()
-        glow.stop()
         Updater.paused(this)
     }
 

@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const MS = 250;
 const SWATCHES = [8, 24, 36, 48, 60, 76, 128, 144, 168, 180, 192, 208, 240, 288, 316, 344];
 const SAT = 75;
-const ZOOMS = [50, 75, 100, 125, 150, 175, 200];
+const ZOOMS = [50, 75, 100, 125, 150, 175, 200, 250, 300, 400, 500];
 const LEVELS = [
   ['p', 'Body'], ['h1', 'Level 1 (Title)'], ['h2', 'Level 2 (Heading)'], ['h3', 'Level 3 (Subheading)'],
   ['h4', 'Level 4'], ['h5', 'Level 5'], ['h6', 'Level 6'], ['sep'], ['pre', 'Code Block'],
