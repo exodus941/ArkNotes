@@ -2,7 +2,7 @@
      the 72-unit area a launcher shows of a 108-unit adaptive icon. Keep in step with ic_bear.xml. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72" width="256" height="256">
   <rect x="18" y="18" width="72" height="72" rx="16" fill="#FFB300"/>
-  <g transform="translate(54,54) scale(1.1) translate(-54,-53)">
+  <g transform="translate(54,57) scale(1.1) translate(-54,-53)">
     <path fill="#121212" d="M30,38a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M60,38a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M32,56a22,21 0 1,0 44,0a22,21 0 1,0 -44,0z"/>
     <path fill="#FFB300" d="M43,50a3,3 0 1,0 6,0a3,3 0 1,0 -6,0z M59,50a3,3 0 1,0 6,0a3,3 0 1,0 -6,0z"/>
     <path fill="#FFB300" stroke="#FFB300" stroke-width="2.8" stroke-linejoin="round" d="M29,63.5h2.6v4h-2.6a1,1 0 0 1 -1,-1v-2a1,1 0 0 1 1,-1z M32.8,63.5h40.2v4h-40.2z M74.1,63.5l5.9,2l-5.9,2z"/>

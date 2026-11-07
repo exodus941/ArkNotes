@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Bear head holding a pencil in its mouth, the product mark for UrsaNotes. Scaled 110%
-     about the artwork's centre and moved 1 unit down, so the top and bottom margins are
-     equal. Pencil: 4 units thick and 52 long, with an amber gap where it crosses the head;
-     the snout sits on top of it with no gap. Farthest points are inside the 33-unit safe
-     circle. Keep in step with docs/icon.svg. -->
+     about the artwork's centre and moved 4 units down, chosen on a circle: the ears clear
+     its edge by 4.8 and the chin by 6.6. Pencil: 4 units thick and 52 long, with an amber
+     gap where it crosses the head; the snout sits on top of it with no gap. The eraser end
+     passes the 33-unit safe circle by 0.9. Keep in step with docs/icon.svg. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -14,7 +14,7 @@
         android:pivotY="53"
         android:scaleX="1.1"
         android:scaleY="1.1"
-        android:translateY="1">
+        android:translateY="4">
         <path
             android:fillColor="#FF121212"
             android:pathData="M30,38a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M60,38a9,9 0 1,0 18,0a9,9 0 1,0 -18,0z M32,56a22,21 0 1,0 44,0a22,21 0 1,0 -44,0z" />
