@@ -381,15 +381,97 @@ $('noteMore').addEventListener('click', (e) => {
 function setZoom(pct, store = true) {
   zoom = pct;
   document.documentElement.style.setProperty('--zoom', String(pct / 100));
-  $('noteZoomValue').textContent = `${pct}%`;
-  $('noteZoomTrigger').setAttribute('aria-label', `Text size, ${pct}%`);
-  if (store) bridge.setZoom(pct);
+  // A pinch lands between whole numbers; the control shows it rounded up.
+  const shown = Math.ceil(pct);
+  $('noteZoomValue').textContent = `${shown}%`;
+  $('noteZoomTrigger').setAttribute('aria-label', `Text size, ${shown}%`);
+  if (store) bridge.setZoom(shown);
 }
 
 $('noteZoomTrigger').addEventListener('click', (e) => {
   e.stopPropagation();
-  openMenu(e.currentTarget, ZOOMS.map((z) => ({ label: `${z}%`, checked: z === zoom, act: () => setZoom(z) })), { align: 'end' });
+  openMenu(e.currentTarget, ZOOMS.map((z) => ({ label: `${z}%`, checked: z === Math.ceil(zoom), act: () => setZoom(z) })), { align: 'end' });
 });
+
+/* Pinch, or double-tap and drag as in UrsaPDF, sets the text size between the menu's ends.
+   The text is live, so lines rewrap to the screen on every move, and the line under the
+   fingers stays under them. A double-tap drag doubles or halves every 90 px: up zooms in,
+   down zooms out. Lifted without a drag, a double-tap stays the browser's own. */
+const TAP_MS = 300;       // UrsaPDF's double-tap window
+const TAP_NEAR = 48;      // how close the second tap lands to the first
+const SLOP = 8;           // the drag that starts a zoom
+const QUICK_SPAN = 90;
+let pinch = null;
+let quick = null;
+let tap = null;           // the touch in progress, while it may still be a tap
+let lastTap = null;
+const fingers = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+const between = (t) => (t[0].clientY + t[1].clientY) / 2;
+const scrollEl = () => $('noteScroll');
+
+/* Where on the document a screen y falls, as a share of its height. */
+function anchor(screenY) {
+  const s = scrollEl();
+  const y = screenY - s.getBoundingClientRect().top;
+  return (s.scrollTop + y) / s.scrollHeight;
+}
+
+function zoomTo(pct, at, screenY) {
+  const s = scrollEl();
+  setZoom(Math.min(ZOOMS[ZOOMS.length - 1], Math.max(ZOOMS[0], pct)), false);
+  s.scrollTop = at * s.scrollHeight - (screenY - s.getBoundingClientRect().top);
+}
+
+scrollEl().addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    quick = null;
+    tap = null;
+    pinch = { far: fingers(e.touches), from: zoom, at: anchor(between(e.touches)) };
+    return;
+  }
+  if (e.touches.length !== 1) return;
+  const { clientX: x, clientY: y } = e.touches[0];
+  const now = Date.now();
+  tap = { x, y, t: now };
+  if (lastTap && now - lastTap.t < TAP_MS && Math.hypot(x - lastTap.x, y - lastTap.y) < TAP_NEAR) {
+    quick = { y, from: zoom, at: anchor(y), on: false };
+  }
+  lastTap = null;
+}, { passive: true });
+
+scrollEl().addEventListener('touchmove', (e) => {
+  if (pinch && e.touches.length >= 2) {
+    e.preventDefault();
+    zoomTo(pinch.from * (fingers(e.touches) / pinch.far), pinch.at, between(e.touches));
+    return;
+  }
+  if (tap && Math.hypot(e.touches[0].clientX - tap.x, e.touches[0].clientY - tap.y) > SLOP) tap = null;
+  if (!quick) return;
+  // The second tap's moves never scroll, or the page would run off before the zoom starts.
+  e.preventDefault();
+  const dy = e.touches[0].clientY - quick.y;
+  if (!quick.on && Math.abs(dy) > SLOP) quick.on = true;
+  if (quick.on) zoomTo(quick.from * 2 ** (-dy / QUICK_SPAN), quick.at, quick.y);
+}, { passive: false });
+
+function endZoom(e) {
+  if (pinch && e.touches.length < 2) {
+    pinch = null;
+    setZoom(Math.ceil(zoom));
+  }
+  if (e.touches.length) return;
+  if (quick?.on) {
+    if (e.cancelable) e.preventDefault();  // no caret or word selection where the drag ended
+    setZoom(Math.ceil(zoom));
+  } else if (!quick && tap && e.type === 'touchend' && Date.now() - tap.t < TAP_MS) {
+    lastTap = tap;
+    lastTap.t = Date.now();
+  }
+  quick = null;
+  tap = null;
+}
+scrollEl().addEventListener('touchend', endZoom);
+scrollEl().addEventListener('touchcancel', endZoom);
 
 /* ── Share: Yeetlist's menu, less the two paste sites, which need its server ── */
 

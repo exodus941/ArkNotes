@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "UrsaTXT"
+rootProject.name = "UrsaNotes"
 include(":app")

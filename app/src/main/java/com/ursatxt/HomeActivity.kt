@@ -114,7 +114,7 @@ class HomeActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dpi(20), dpi(12), dpi(8), dpi(8))
         }
-        title = label("UrsaTXT", 24f, Theme.text(), bold = true)
+        title = label("UrsaNotes", 24f, Theme.text(), bold = true)
         version = label(BuildConfig.VERSION_NAME, 13f, Theme.text(), bold = true)
         // TOP gravity, not centre: only then does LinearLayout line the two baselines up.
         header.addView(LinearLayout(this).apply {
@@ -780,7 +780,7 @@ class HomeActivity : Activity() {
     // ---- backup ----
 
     private fun exportAll() {
-        val name = "UrsaTXT-" + SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date()) + ".zip"
+        val name = "UrsaNotes-" + SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date()) + ".zip"
         var n = 0
         val ok = saveAndShare(name, "application/zip") { n = Notes.export(this, it) }
         note(if (ok) "Exported ${count(n)} to Downloads as $name" else "Couldn’t save the backup to Downloads")
@@ -805,7 +805,7 @@ class HomeActivity : Activity() {
         if (prefs.getBoolean("askedFiles", false)) return
         prefs.edit().putBoolean("askedFiles", true).apply()
         modal.choose("Keep notes in Documents?",
-            "UrsaTXT saves each note as a .md file in Documents/UrsaTXT, where other apps can open them. Android asks you to allow file access for that. Until then, notes stay inside the app.",
+            "UrsaNotes saves each note as a .md file in Documents/UrsaNotes, where other apps can open them. Android asks you to allow file access for that. Until then, notes stay inside the app.",
             listOf(
                 "Allow" to {
                     if (Build.VERSION.SDK_INT >= 30) {
@@ -874,7 +874,7 @@ class HomeActivity : Activity() {
         if (req == pickZip && res == RESULT_OK && uri != null) {
             val n = try { contentResolver.openInputStream(uri)?.use { Notes.import(this, it) } ?: -1 } catch (_: Exception) { -1 }
             refresh()
-            note(if (n >= 0) "Imported ${count(n)}" else "Couldn’t read that file as an UrsaTXT backup")
+            note(if (n >= 0) "Imported ${count(n)}" else "Couldn’t read that file as an UrsaNotes backup")
         }
     }
 

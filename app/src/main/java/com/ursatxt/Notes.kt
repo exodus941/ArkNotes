@@ -35,11 +35,18 @@ object Notes {
     /** True when the shared folder can be used: Android 11+ needs All files access. */
     fun shared(): Boolean = if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager() else true
 
-    private fun publicRoot() = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "UrsaTXT")
+    /** Documents/UrsaNotes. Notes from when the app was UrsaTXT move here the first time. */
+    private fun publicRoot(): File {
+        val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        val root = File(docs, "UrsaNotes")
+        val old = File(docs, "UrsaTXT")
+        if (!root.exists() && old.isDirectory) old.renameTo(root)
+        return root
+    }
     private fun privateRoot(c: Context) = File(c.getExternalFilesDir(null) ?: c.filesDir, "UrsaTXT")
 
     /**
-     * Documents/UrsaTXT once access is granted; the app's own folder before that. Notes
+     * Documents/UrsaNotes once access is granted; the app's own folder before that. Notes
      * written there before access move to the shared folder the first time it is open.
      */
     fun root(c: Context): File {

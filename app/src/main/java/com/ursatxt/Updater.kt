@@ -40,7 +40,7 @@ object Updater {
         }
     }
 
-    private fun apkFile(c: Context) = File(c.cacheDir, "update/UrsaTXT.apk")
+    private fun apkFile(c: Context) = File(c.cacheDir, "update/UrsaNotes.apk")
 
     /** Call from every activity's onResume; [home] is true for the home list. */
     fun resumed(a: Activity, home: Boolean) {
@@ -62,7 +62,7 @@ object Updater {
         if (seen != BuildConfig.VERSION_NAME) {
             p.edit().putString("version", BuildConfig.VERSION_NAME).apply()
             if (seen != null && newer(BuildConfig.VERSION_NAME, seen))
-                a.note("UrsaTXT updated to ${BuildConfig.VERSION_NAME}")
+                a.note("UrsaNotes updated to ${BuildConfig.VERSION_NAME}")
         }
     }
 
@@ -135,7 +135,7 @@ object Updater {
                 result.onFailure { a.note("Update check failed: ${it.message}") }
                 result.onSuccess { (tag, url) ->
                     if (!newer(tag, BuildConfig.VERSION_NAME)) {
-                        a.note("You are already on the latest version of UrsaTXT")
+                        a.note("You are already on the latest version of UrsaNotes")
                         return@onSuccess
                     }
                     a.note("Update found, downloading version $tag")
@@ -179,7 +179,7 @@ object Updater {
             }
             val id = pi.createSession(params)
             pi.openSession(id).use { s ->
-                s.openWrite("UrsaTXT.apk", 0, file.length()).use { out ->
+                s.openWrite("UrsaNotes.apk", 0, file.length()).use { out ->
                     file.inputStream().use { it.copyTo(out, 1 shl 16) }
                     s.fsync(out)
                 }

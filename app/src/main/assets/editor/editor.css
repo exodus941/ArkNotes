@@ -129,10 +129,12 @@ svg path { vector-effect: non-scaling-stroke }
 .find-count { font-size: 13px; color: var(--sub); flex: 0 0 auto }
 
 /* The document: one measure, centred. */
-.note-scroll { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain }
+/* touch-action leaves pinches to editor.js. The measure is a fixed length, not in ch, so
+   small text still fills the screen's width on a phone. */
+.note-scroll { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y }
 .note-body {
   font-size: calc(16px * var(--zoom));
-  width: min(72ch, 100%);
+  width: min(648px, 100%);
   min-height: 100%;
   margin-inline: auto;
   padding: 20px 20px calc(96px + var(--bottom));
