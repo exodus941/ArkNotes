@@ -43,6 +43,9 @@ class HomeActivity : Activity() {
         /** The path strip's height and the gap under it, in dp. */
         const val CRUMB_H = 48
         const val CRUMB_GAP = 16
+        /** The bottom row: buttons 56 dp tall, 12 dp apart. */
+        const val BTN = 56
+        const val GAP = 12
     }
 
     private val pickZip = 1
@@ -71,6 +74,7 @@ class HomeActivity : Activity() {
     private val list get() = page.list
     private lateinit var tabs: LinearLayout
     private lateinit var tabBar: View
+    private lateinit var tabBar2: View
     private lateinit var pager: Pager
 
     private lateinit var frame: FrameLayout
@@ -92,16 +96,7 @@ class HomeActivity : Activity() {
     private lateinit var bottomFade: Vignette
     private lateinit var modal: Modal
     private lateinit var menu: Menu
-    private var bottomInset = 0
     private val onTheme: () -> Unit = { applyTheme() }
-
-    // The + button and what it opens.
-    private lateinit var fab: FrameLayout
-    private lateinit var fabIcon: ImageView
-    private lateinit var upBtn: ImageView
-    private lateinit var dial: List<Pair<ImageView, TextView>>
-    private lateinit var catcher: View
-    private var dialOpen = false
 
     private val prefs by lazy { getSharedPreferences("ursa", MODE_PRIVATE) }
     private var sortKey: String
@@ -182,15 +177,16 @@ class HomeActivity : Activity() {
         sticky.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> place() }
         root.addView(body, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        buildFab()
+        buildBar()
+        bar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> place() }
 
         frame.setOnApplyWindowInsetsListener { _, ins ->
             val s = ins.safe()
             root.setPadding(s[0], s[1], s[2], 0)
             @Suppress("DEPRECATION")
             val ime = if (Build.VERSION.SDK_INT >= 30) ins.getInsets(WindowInsets.Type.ime()).bottom else ins.systemWindowInsetBottom
-            bottomInset = maxOf(s[3], ime)
-            fabInsets(s[2], s[3], barBelow(ins, s[3]))
+            imeInset = ime
+            barInsets(s[3])
             place()
             ins
         }
@@ -226,27 +222,37 @@ class HomeActivity : Activity() {
         band.addView(View(this).apply { tag = "rule" }, FrameLayout.LayoutParams(MATCH_PARENT, dpi(1), Gravity.BOTTOM))
         tabBar = View(this)
         band.addView(tabBar, FrameLayout.LayoutParams(0, dpi(2), Gravity.BOTTOM))
+        // Its twin enters from the far side while a swipe wraps past the last tab.
+        tabBar2 = View(this)
+        band.addView(tabBar2, FrameLayout.LayoutParams(0, dpi(2), Gravity.BOTTOM))
         band.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeTabs(pager.pos) }
         return band
     }
 
-    /** [pos] runs 0 (Notes) to 1 (Sketches) as the pages slide. */
+    /** [p] wrapped into 0 until the page count: 0 is Notes, 1 Sketches, and 1.5 halfway back to Notes. */
+    private fun wrap(p: Float): Float { val n = pages.size.toFloat(); return ((p % n) + n) % n }
+
+    /** [pos] runs 0 (Notes) to 1 (Sketches) as the pages slide, and on round past either end. */
     private fun placeTabs(pos: Float) {
         val w = tabs.width / pages.size
-        if (tabBar.layoutParams.width != w) { tabBar.layoutParams.width = w; tabBar.requestLayout() }
-        tabBar.translationX = pos * w
+        for (b in listOf(tabBar, tabBar2)) if (b.layoutParams.width != w) { b.layoutParams.width = w; b.requestLayout() }
+        val at = wrap(pos)
+        tabBar.translationX = at * w
+        tabBar2.translationX = (at - pages.size) * w
         paintTabs()
     }
 
     private fun paintTabs() {
         if (!::tabs.isInitialized) return
-        val pos = if (::pager.isInitialized) pager.pos else 0f
+        val pos = if (::pager.isInitialized) wrap(pager.pos) else 0f
         tabBar.setBackgroundColor(Theme.accentInk())
+        tabBar2.setBackgroundColor(Theme.accentInk())
         (tabBar.parent as View).findViewWithTag<View>("rule").setBackgroundColor(Theme.line())
         for (k in 0 until tabs.childCount) {
             val t = tabs.getChildAt(k)
-            // The label goes from grey to the text colour as its page slides in.
-            val on = (1f - kotlin.math.abs(pos - k)).coerceIn(0f, 1f)
+            // The label goes from grey to the text colour as its page slides in, from either side.
+            val d = kotlin.math.abs(pos - k).let { minOf(it, pages.size - it) }
+            val on = (1f - d).coerceIn(0f, 1f)
             val ink = android.animation.ArgbEvaluator().evaluate(on, Theme.sub(), Theme.text()) as Int
             t.findViewWithTag<TextView>("text").setTextColor(ink)
             t.findViewWithTag<ImageView>("icon").setColorFilter(ink)
@@ -262,7 +268,6 @@ class HomeActivity : Activity() {
     /** Called once a slide lands on [k]. */
     private fun landed(k: Int) {
         if (k == cur) return
-        closeDial()
         hideKeyboard()
         cur = k
         if (search.text.isNotEmpty()) search.setText("")
@@ -275,9 +280,9 @@ class HomeActivity : Activity() {
     }
 
     /**
-     * The two pages side by side. A sideways drag that beats the vertical one by 2 to 1
-     * moves them under the finger; letting go lands on the nearer page, or the one a
-     * fling points to, over %ease250%.
+     * The pages side by side on a loop: past the last comes the first again. A sideways drag
+     * that beats the vertical one by 2 to 1 moves them under the finger; letting go lands on
+     * the nearer page, or the one a fling points to, over %ease250%.
      */
     private inner class Pager : FrameLayout(this@HomeActivity) {
         var pos = 0f; private set
@@ -295,22 +300,32 @@ class HomeActivity : Activity() {
         }
 
         private fun arrange() {
-            for (k in 0 until childCount) getChildAt(k).translationX = (k - pos) * width
+            val n = childCount
+            for (k in 0 until n) {
+                // Each page takes the nearer of its places on the loop.
+                var d = (k - pos) % n
+                if (d >= n / 2f) d -= n
+                if (d < -n / 2f) d += n
+                getChildAt(k).translationX = d * width
+            }
             placeTabs(pos)
         }
 
-        private fun moveTo(p: Float) { pos = p.coerceIn(0f, (childCount - 1).toFloat()); arrange() }
+        private fun moveTo(p: Float) { pos = p; arrange() }
 
+        /** Slides to [k], which may lie one page past either end; it lands on that page's place on the loop. */
         fun settle(k: Int) {
             anim?.cancel()
             val to = k.toFloat()
-            if (pos == to) { landed(k); return }
+            val n = childCount
+            val home = ((k % n) + n) % n
+            if (pos == to) { moveTo(home.toFloat()); landed(home); return }
             anim = ValueAnimator.ofFloat(pos, to).apply {
                 duration = (Motion.MS * kotlin.math.abs(to - pos)).toLong().coerceAtLeast(120)
                 interpolator = Motion.IN
                 addUpdateListener { moveTo(it.animatedValue as Float) }
                 addListener(object : android.animation.AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(a: android.animation.Animator) { if (pos == to) landed(k) }
+                    override fun onAnimationEnd(a: android.animation.Animator) { if (pos == to) { moveTo(home.toFloat()); landed(home) } }
                 })
                 start()
             }
@@ -329,7 +344,7 @@ class HomeActivity : Activity() {
                     val dx = e.x - downX; val dy = e.y - downY
                     if (kotlin.math.abs(dx) > slop && kotlin.math.abs(dx) > 2 * kotlin.math.abs(dy)) {
                         dragging = true; anim?.cancel(); from = pos; downX = e.x
-                        closeDial(); hideKeyboard()
+                        hideKeyboard()
                         return true
                     }
                 }
@@ -354,7 +369,7 @@ class HomeActivity : Activity() {
                         v < -fling -> kotlin.math.ceil(pos.toDouble()).toInt()
                         v > fling -> kotlin.math.floor(pos.toDouble()).toInt()
                         else -> kotlin.math.round(pos).toInt()
-                    }.coerceIn(0, childCount - 1)
+                    }
                     settle(k)
                 }
             }
@@ -373,7 +388,8 @@ class HomeActivity : Activity() {
     private fun buildSticky() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         isClickable = true
-        setPadding(dpi(16), dpi(4), dpi(16), dpi(12))
+        // 16 dp under the tabs, the same as under the search box.
+        setPadding(dpi(16), dpi(16), dpi(16), dpi(12))
 
         // The path, when inside a folder: it opens down from under the title bar, %ease250%.
         crumbs = LinearLayout(context).apply {
@@ -431,13 +447,11 @@ class HomeActivity : Activity() {
         val h = sticky.height
         for (p in pages) {
             if (p.spacer.layoutParams.height != h) { p.spacer.layoutParams.height = h; p.spacer.requestLayout() }
-            // Room under the last card for the + button, so it never hides it.
-            p.list.setPadding(0, 0, 0, bottomInset + fabRoom)
+            // The list ends above the row; an open keyboard covers more, so the list keeps that clear too.
+            p.list.setPadding(0, 0, 0, maxOf(0, imeInset - bar.height) + dpi(8))
             p.empty.translationY = h + dp(24f)
         }
         topFade.translationY = h.toFloat()
-        val fadeH = dpi(48) + bottomInset
-        if (bottomFade.layoutParams.height != fadeH) { bottomFade.layoutParams.height = fadeH; bottomFade.requestLayout() }
         updateFades()
     }
 
@@ -468,7 +482,7 @@ class HomeActivity : Activity() {
         search.setTextColor(Theme.text())
         search.setHintTextColor(Theme.sub())
         paintCrumbs()
-        paintFab()
+        paintBar()
         paintTabs()
         for (p in pages) {
             p.empty.setTextColor(Theme.sub())
@@ -485,7 +499,6 @@ class HomeActivity : Activity() {
     /** Into [to], with the list fading out and back in, 250 ms in all. */
     private fun go(to: File) {
         if (to == dir) return
-        closeDial()
         hideKeyboard()
         if (search.text.isNotEmpty()) search.setText("")
         val wasRoot = atRoot()
@@ -575,7 +588,8 @@ class HomeActivity : Activity() {
         p.empty.text = when {
             q.isNotEmpty() && p.items.isEmpty() -> if (lib === Notes) "No notes contain “$q”" else "No sketch names contain “$q”"
             p.items.isEmpty() -> if (p.dir == lib.root(this)) {
-                if (lib === Notes) "No notes yet. Tap + to write one." else "No sketches yet. Tap + to draw one."
+                if (lib === Notes) "No notes yet. The buttons below make notes, sketches and folders."
+                else "No sketches yet. The buttons below make notes, sketches and folders."
             } else "This folder has no $what."
             else -> ""
         }
@@ -799,174 +813,88 @@ class HomeActivity : Activity() {
 
     private fun where(f: File) = if (f == lib.root(this)) "Root" else "“${f.name}”"
 
-    // ---- the + button ----
+    // ---- the bottom row ----
 
-    private fun buildFab() {
-        catcher = View(this).apply {
-            visibility = View.GONE
-            isClickable = true
-            setOnClickListener { closeDial() }
+    private lateinit var bar: LinearLayout
+    private lateinit var makers: List<ImageView>
+    private lateinit var upBtn: ImageView
+    private lateinit var upSlot: FrameLayout
+    private var imeInset = 0
+
+    /**
+     * New Note, New Sketch and New Folder, right to left, sharing a row along the bottom in
+     * the page's own colour. Inside a folder a square up button opens at its start. The list
+     * and its bottom shadow end above the row.
+     */
+    private fun buildBar() {
+        bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        content.addView(catcher, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-
-        fun small(icon: Int, name: String, act: () -> Unit) = ImageView(this).apply {
+        fun button(icon: Int, name: String, act: () -> Unit) = ImageView(this).apply {
             setImageResource(icon)
-            background = Squircle(this@HomeActivity, 0, ACCENT)
+            // A plain rounded rectangle, 14 dp like the search box: a squircle stretched this wide reads as a pill.
+            background = pill(0, 14f)
             foreground = ripple()
             clipToOutline = true
-            elevation = dp(4f)
-            setPadding(dpi(10), dpi(10), dpi(10), dpi(10))
+            setPadding(dpi(16), dpi(16), dpi(16), dpi(16))
             contentDescription = name
             setOnClickListener { act() }
         }
-        fun tag(text: String) = label(text, 14f, Theme.text(), bold = true).apply {
-            setPadding(dpi(12), dpi(6), dpi(12), dpi(6))
-            elevation = dp(4f)
-            alpha = 0f
-            visibility = View.INVISIBLE
+        upBtn = button(R.drawable.ic_up, "Up a folder") { up() }
+        upSlot = FrameLayout(this).apply { clipChildren = true; alpha = 0f }
+        upSlot.addView(upBtn, FrameLayout.LayoutParams(dpi(BTN), dpi(BTN), Gravity.START))
+        bar.addView(upSlot, LinearLayout.LayoutParams(0, dpi(BTN)))
+        makers = listOf(
+            button(R.drawable.ic_folder_plus, "New Folder") { makeFolder() },
+            button(R.drawable.ic_sketch_plus, "New Sketch") { makeSketch() },
+            button(R.drawable.ic_note_plus, "New Note") { makeNote() },
+        )
+        makers.forEachIndexed { k, b ->
+            val lp = LinearLayout.LayoutParams(0, dpi(BTN), 1f)
+            if (k > 0) lp.marginStart = dpi(GAP)
+            bar.addView(b, lp)
         }
-        val newNote = small(R.drawable.ic_note_plus, "New Note") { closeDial(); makeNote() }
-        val newSketch = small(R.drawable.ic_sketch_plus, "New Sketch") { closeDial(); makeSketch() }
-        val newFolder = small(R.drawable.ic_folder_plus, "New Folder") { closeDial(); makeFolder() }
-        dial = listOf(newNote to tag("New Note"), newSketch to tag("New Sketch"), newFolder to tag("New Folder"))
-        for ((b, t) in dial) {
-            b.alpha = 0f; b.visibility = View.INVISIBLE
-            content.addView(t, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END))
-            content.addView(b, FrameLayout.LayoutParams(dpi(44), dpi(44), Gravity.BOTTOM or Gravity.END))
-        }
-        upBtn = small(R.drawable.ic_up, "Up a folder") { up() }.apply { alpha = 0f; visibility = View.INVISIBLE }
-        content.addView(upBtn, FrameLayout.LayoutParams(dpi(44), dpi(44), Gravity.BOTTOM or Gravity.END))
-
-        // The squircle stays put; only the + inside it turns to an ×.
-        fabIcon = ImageView(this).apply { setImageResource(R.drawable.ic_plus) }
-        fab = FrameLayout(this).apply {
-            background = Squircle(this@HomeActivity, ACCENT)
-            foreground = ripple()
-            clipToOutline = true
-            elevation = dp(6f)
-            contentDescription = "New"
-            setOnClickListener { if (dialOpen) closeDial() else openDial() }
-            addView(fabIcon, FrameLayout.LayoutParams(dpi(24), dpi(24), Gravity.CENTER))
-        }
-        content.addView(fab, FrameLayout.LayoutParams(dpi(56), dpi(56), Gravity.BOTTOM or Gravity.END))
-        paintFab()
+        root.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        paintBar()
     }
 
-    private var fabRoom = 0
-    private var fabEnd = 0
-    private var fabBottom = 0
-
-    /**
-     * Where the + sits, from the cards' ⋮ column rather than a fixed corner gap. The list
-     * keeps room under its last card for the button, so it never covers a card's ⋮.
-     */
-    /** How much of the bottom a navigation bar with buttons takes; a gesture line takes none. */
-    private fun barBelow(ins: WindowInsets, bottom: Int): Int = when {
-        Build.VERSION.SDK_INT >= 30 -> ins.getInsets(WindowInsets.Type.tappableElement()).bottom
-        Build.VERSION.SDK_INT >= 29 -> @Suppress("DEPRECATION") ins.tappableElementInsets.bottom
-        else -> bottom
+    /** The row keeps 16 dp from the sides and 16 dp above the navigation bar or gesture line. */
+    private fun barInsets(navBottom: Int) {
+        bar.setPadding(dpi(16), dpi(8), dpi(16), navBottom + dpi(16))
     }
 
-    private fun fabInsets(end: Int, bottom: Int, bar: Int) {
-        // Sideways it stays clear of the cards' ⋮ buttons: each is a 48 dp target whose right
-        // edge is 20 dp from the screen's (16 dp card inset + 4 dp), so the + ends 8 dp to its
-        // left, 76 dp in.
-        // The same 76 dp up from the bottom: from the top of a button bar, which ends the
-        // visible screen, or from the screen's edge under a gesture line.
-        fabEnd = end + dpi(16 + 4 + 48 + 8); fabBottom = bar + dpi(76)
-        fabRoom = fabBottom - bottom + dpi(56) + dpi(16)
-        (fab.layoutParams as FrameLayout.LayoutParams).apply { marginEnd = fabEnd; bottomMargin = fabBottom; rightMargin = fabEnd }
-        // The small buttons centre on the + button's column.
-        val sEnd = fabEnd + dpi(6)
-        for ((b, t) in dial + listOf(upBtn to null)) {
-            (b.layoutParams as FrameLayout.LayoutParams).apply { marginEnd = sEnd; rightMargin = sEnd; bottomMargin = fabBottom + dpi(6) }
-            t?.let { (it.layoutParams as FrameLayout.LayoutParams).apply { marginEnd = sEnd + dpi(44) + dpi(12); rightMargin = marginEnd; bottomMargin = fabBottom + dpi(6) + dpi(8) } }
-        }
-        frame.requestLayout()
-        placeDial(if (dialOpen) 1f else 0f)
-    }
+    private var upAnim: ValueAnimator? = null
+    private var upShown = false
 
-    /** One slot: a 44 dp button and a 16 dp gap. The first slot sits 16 dp over the + button. */
-    private fun slot(k: Int) = -(dp(56f) + dp(16f) + k * dp(60f) - dp(6f))
-
-    private fun placeDial(t: Float) {
-        // The up button sits in slot 0 while closed and is pushed up past the dial as it opens.
-        upBtn.translationY = slot(0) + (slot(dial.size) - slot(0)) * t
-    }
-
-    private var dialAnim: ValueAnimator? = null
-
-    private fun openDial() {
-        if (dialOpen) return
-        dialOpen = true
-        catcher.visibility = View.VISIBLE
-        fabIcon.animate().rotation(45f).setDuration(Motion.MS).setInterpolator(Motion.IN).start()
-        fab.contentDescription = "Close"
-        // One after the other, each starting halfway through the last, %ease250%.
-        dial.forEachIndexed { k, (b, t) ->
-            for (v in listOf(b, t)) {
-                v.animate().cancel()
-                v.visibility = View.VISIBLE
-                v.translationY = slot(k) + dp(24f)
-                v.alpha = 0f
-                v.animate().translationY(slot(k)).alpha(1f).setStartDelay(k * Motion.MS / 2).setDuration(Motion.MS)
-                    .setInterpolator(Motion.IN).withEndAction(null).start()
+    /** Inside a folder the up button opens at the row's start, %ease250%; at the root it closes. */
+    private fun showUp(show: Boolean) {
+        if (show == upShown && upAnim?.isRunning != true) return
+        upShown = show
+        val lp = upSlot.layoutParams as LinearLayout.LayoutParams
+        val full = dpi(BTN + GAP)
+        upAnim?.cancel()
+        upAnim = ValueAnimator.ofInt(lp.width, if (show) full else 0).apply {
+            duration = Motion.MS
+            interpolator = if (show) Motion.IN else Motion.OUT
+            addUpdateListener {
+                lp.width = it.animatedValue as Int
+                upSlot.alpha = lp.width / full.toFloat()
+                upSlot.requestLayout()
             }
-        }
-        animateUp(1f)
-    }
-
-    private fun closeDial() {
-        if (!dialOpen) return
-        dialOpen = false
-        catcher.visibility = View.GONE
-        fabIcon.animate().rotation(0f).setDuration(Motion.MS).setInterpolator(Motion.OUT).start()
-        fab.contentDescription = "New"
-        val n = dial.size
-        dial.forEachIndexed { k, (b, t) ->
-            for (v in listOf(b, t)) {
-                v.animate().cancel()
-                v.animate().translationY(slot(k) + dp(24f)).alpha(0f).setStartDelay((n - 1 - k) * Motion.MS / 2).setDuration(Motion.MS)
-                    .setInterpolator(Motion.OUT).withEndAction { v.visibility = View.INVISIBLE }.start()
-            }
-        }
-        animateUp(0f)
-    }
-
-    private var upT = 0f
-    private fun animateUp(to: Float) {
-        dialAnim?.cancel()
-        dialAnim = ValueAnimator.ofFloat(upT, to).apply {
-            duration = (Motion.MS * kotlin.math.abs(to - upT)).toLong() + if (to > upT) Motion.MS / 2 else 0
-            interpolator = if (to > upT) Motion.IN else Motion.OUT
-            addUpdateListener { upT = it.animatedValue as Float; placeDial(upT) }
             start()
         }
     }
 
-    /** The up button fades in once inside a folder and out at the root. */
-    private fun showUp(show: Boolean) {
-        upBtn.animate().cancel()
-        if (show) { upBtn.visibility = View.VISIBLE }
-        upBtn.animate().alpha(if (show) 1f else 0f).setStartDelay(0).setDuration(Motion.MS).setInterpolator(Motion.FADE)
-            .withEndAction { if (!show) upBtn.visibility = View.INVISIBLE }.start()
-    }
-
-    private fun paintFab() {
-        if (!::fab.isInitialized) return
-        fabIcon.setColorFilter(BG)
-        (fab.foreground as? RippleDrawable)?.setColor(ColorStateList.valueOf(0x33000000))
+    private fun paintBar() {
+        if (!::bar.isInitialized) return
+        bar.setBackgroundColor(Theme.bg())
         // The up button is grey: it moves you, it makes nothing.
-        for (b in dial.map { it.first } + upBtn) {
+        for (b in makers + upBtn) {
             val ink = if (b === upBtn) Theme.sub() else Theme.accentInk()
-            (b.background as Squircle).apply { fill = Theme.bg(); stroke = ink }
-            b.background.invalidateSelf()
+            (b.background as android.graphics.drawable.GradientDrawable).apply { setColor(Theme.bg()); setStroke(dpi(2), ink) }
             b.setColorFilter(ink)
             (b.foreground as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
-        }
-        for ((_, t) in dial) {
-            t.setTextColor(Theme.text())
-            t.background = pill(Theme.popup(), 10f).apply { setStroke(dpi(1), Theme.outline()) }
         }
     }
 
@@ -984,7 +912,6 @@ class HomeActivity : Activity() {
     }
 
     private fun sketch(f: File, new: Boolean) {
-        closeDial()
         hideKeyboard()
         @Suppress("DEPRECATION")
         startActivityForResult(Intent(this, SketchActivity::class.java).putExtra("path", f.absolutePath).putExtra("new", new), openNote)
@@ -1000,7 +927,6 @@ class HomeActivity : Activity() {
     }
 
     private fun edit(f: File) {
-        closeDial()
         hideKeyboard()
         @Suppress("DEPRECATION")
         startActivityForResult(Intent(this, EditorActivity::class.java).putExtra("path", f.absolutePath), openNote)
@@ -1072,7 +998,6 @@ class HomeActivity : Activity() {
             menu.showing -> menu.dismiss()
             modal.showing && t != null && t.editing -> t.stopEditing()
             modal.showing -> { modal.cancel(); tree = null }
-            dialOpen -> closeDial()
             search.text.isNotEmpty() -> search.setText("")
             !atRoot() -> up()
             else -> @Suppress("DEPRECATION") super.onBackPressed()

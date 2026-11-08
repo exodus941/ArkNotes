@@ -15,6 +15,7 @@ import android.view.View
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * A sketch: ink as alpha in tiles of [TILE] px, so no bitmap passes a GPU's texture limit
@@ -340,10 +341,7 @@ class SketchCanvas(c: Context, val w: Int, val h: Int) : View(c) {
      */
     private fun widthAt(e: MotionEvent, i: Int, h: Int): Float {
         val stylus = e.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
-        if (stylus) {
-            val p = if (h >= 0) e.getHistoricalPressure(0, h) else e.getPressure(0)
-            return (0.3f + 0.9f * p).coerceIn(0.3f, 1.2f)
-        }
+        if (stylus) return pen(if (h >= 0) e.getHistoricalPressure(0, h) else e.getPressure(0))
         val x = if (h >= 0) e.getHistoricalX(0, h) else e.getX(0)
         val y = if (h >= 0) e.getHistoricalY(0, h) else e.getY(0)
         val t = if (h >= 0) e.getHistoricalEventTime(h) else e.eventTime
@@ -357,6 +355,14 @@ class SketchCanvas(c: Context, val w: Int, val h: Int) : View(c) {
     private var px = 0f
     private var py = 0f
 
+    /**
+     * A pen's width from its pressure. An S Pen reports about 0.05 to 0.3 in ordinary writing,
+     * so a straight line from pressure drew it at a third to a half of a finger's width and
+     * barely moved. The square root spreads the light end: 0.1 gives 0.72, 0.4 gives 1.03
+     * (a slow finger is 1 to 1.15), and a full press 1.4.
+     */
+    private fun pen(p: Float) = (0.4f + sqrt(p.coerceIn(0f, 1f))).coerceIn(0.4f, 1.4f)
+
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
@@ -364,7 +370,7 @@ class SketchCanvas(c: Context, val w: Int, val h: Int) : View(c) {
                 drawing = true; gesture = false
                 px = e.x; py = e.y; lastT = e.eventTime; speedF = 1f
                 val stylus = e.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
-                val r = radius() * (if (stylus) (0.3f + 0.9f * e.pressure).coerceIn(0.3f, 1.2f) else 1f)
+                val r = radius() * (if (stylus) pen(e.pressure) else 1f)
                 lx = toCanvasX(e.x); ly = toCanvasY(e.y); lr = r
                 nDabs = 0; run = 0f
                 addDab(lx, ly, lr * taper())
