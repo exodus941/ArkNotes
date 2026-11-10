@@ -423,7 +423,6 @@ class HomeActivity : Activity() {
         // so 16 dp part it from the path.
         swatch = View(context)
         swatchBtn = FrameLayout(context).apply {
-            background = ripple()
             contentDescription = "Folder colour"
             addView(swatch, FrameLayout.LayoutParams(dpi(16), dpi(16), Gravity.CENTER))
             setOnClickListener { folderColours(it) }
@@ -607,7 +606,6 @@ class HomeActivity : Activity() {
     private fun paintSwatch(at: File = dir) {
         if (!::swatch.isInitialized) return
         swatch.background = pill(folderColor(lib.folderHue(this, at)), 4f)
-        (swatchBtn.background as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
     }
 
     /** The editor's sixteen colours, 40 dp squares 8 dp apart, under the swatch; the folder's own is ringed. */
