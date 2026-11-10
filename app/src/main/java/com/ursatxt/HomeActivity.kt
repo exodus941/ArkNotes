@@ -986,11 +986,15 @@ class HomeActivity : Activity() {
     private fun paintBar() {
         if (!::bar.isInitialized) return
         bar.setBackgroundColor(Theme.bg())
-        // The up button is grey: it moves you, it makes nothing.
+        // The up button is grey: it moves you, it makes nothing. New Note and New Sketch are
+        // filled amber like UrsaPDF's Open a PDF; New Folder and up stay outlined.
         for (b in makers + upBtn) {
+            val filled = b !== upBtn && b !== makers[0]
             val ink = if (b === upBtn) Theme.sub() else Theme.accentInk()
-            (b.background as android.graphics.drawable.GradientDrawable).apply { setColor(Theme.bg()); setStroke(dpi(2), ink) }
-            b.setColorFilter(ink)
+            (b.background as android.graphics.drawable.GradientDrawable).apply {
+                if (filled) { setColor(ACCENT); setStroke(0, 0) } else { setColor(Theme.bg()); setStroke(dpi(2), ink) }
+            }
+            b.setColorFilter(if (filled) BG else ink)
             (b.foreground as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
         }
     }
