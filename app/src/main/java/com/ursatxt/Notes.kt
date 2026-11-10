@@ -198,7 +198,7 @@ open class Library(private val sub: String, val EXT: String, val untitled: Strin
         return if (f.isDirectory) {
             val kids = f.listFiles()?.filter { visible(it) } ?: emptyList()
             Entry(f, true, f.name, rel(c, f), added, opened, f.walkTopDown().filter { it.isFile }.sumOf { it.length() },
-                i.optBoolean("pin"), 0, notes = kids.count { !it.isDirectory }, folders = kids.count { it.isDirectory })
+                i.optBoolean("pin"), i.optInt("hue", -1), notes = kids.count { !it.isDirectory }, folders = kids.count { it.isDirectory })
         } else {
             Entry(f, false, f.name.removeSuffix(EXT), rel(c, f), added, opened, f.length(),
                 i.optBoolean("pin"), hueOf(c, f), preview = preview(f))
@@ -215,6 +215,9 @@ open class Library(private val sub: String, val EXT: String, val untitled: Strin
     }
 
     fun named(c: Context, f: File) = info(c, f).optBoolean("named", false)
+
+    /** A folder's picked hue, or -1 while it has none. */
+    fun folderHue(c: Context, f: File) = info(c, f).optInt("hue", -1)
 
     /** What a card shows under the name. */
     open fun preview(f: File): String = ""

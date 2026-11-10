@@ -87,6 +87,11 @@ class HomeActivity : Activity() {
     private lateinit var sticky: LinearLayout
     private lateinit var crumbBox: FrameLayout
     private lateinit var crumbScroll: HorizontalScrollView
+    private lateinit var crumbStrip: LinearLayout
+    private lateinit var crumbStart: Vignette
+    private lateinit var crumbEnd: Vignette
+    private lateinit var swatch: View
+    private lateinit var swatchBtn: FrameLayout
     private lateinit var crumbs: LinearLayout
     private lateinit var search: EditText
     private lateinit var searchBox: LinearLayout
@@ -403,9 +408,34 @@ class HomeActivity : Activity() {
             setPadding(dpi(4), 0, dpi(4), 0)
             clipToPadding = false
             addView(crumbs, FrameLayout.LayoutParams(WRAP_CONTENT, dpi(CRUMB_H)))
+            setOnScrollChangeListener { _, _, _, _, _ -> crumbFades() }
+            // A new width can change what fits, so the path is laid out again.
+            addOnLayoutChangeListener { _, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) post { buildCrumbs(dir, crumbsFull) } }
+        }
+        // The list's soft edge, turned sideways, where the path runs past either end of its track.
+        crumbStart = Vignette(context, Vignette.START) { Theme.card() }
+        crumbEnd = Vignette(context, Vignette.END) { Theme.card() }
+        val track = FrameLayout(context)
+        track.addView(crumbScroll, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        track.addView(crumbStart, FrameLayout.LayoutParams(dpi(32), MATCH_PARENT, Gravity.START))
+        track.addView(crumbEnd, FrameLayout.LayoutParams(dpi(32), MATCH_PARENT, Gravity.END))
+        // The folder's colour at the strip's end: a 16 dp square (the editor's) in a 48 dp target,
+        // so 16 dp part it from the path.
+        swatch = View(context)
+        swatchBtn = FrameLayout(context).apply {
+            background = ripple()
+            contentDescription = "Folder colour"
+            addView(swatch, FrameLayout.LayoutParams(dpi(16), dpi(16), Gravity.CENTER))
+            setOnClickListener { folderColours(it) }
+        }
+        crumbStrip = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            clipToOutline = true
+            addView(track, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
+            addView(swatchBtn, LinearLayout.LayoutParams(dpi(48), dpi(48)))
         }
         crumbBox = FrameLayout(context).apply { clipChildren = true; clipToPadding = true }
-        crumbBox.addView(crumbScroll, FrameLayout.LayoutParams(MATCH_PARENT, dpi(CRUMB_H), Gravity.TOP))
+        crumbBox.addView(crumbStrip, FrameLayout.LayoutParams(MATCH_PARENT, dpi(CRUMB_H), Gravity.TOP))
         addView(crumbBox, LinearLayout.LayoutParams(MATCH_PARENT, 0))
 
         searchBox = LinearLayout(context).apply {
@@ -519,30 +549,99 @@ class HomeActivity : Activity() {
 
     private fun up() { if (!atRoot()) dir.parentFile?.let { go(it) } }
 
-    private fun buildCrumbs(at: File) {
+    /** Whether the path shows every folder; a move to another folder collapses it again. */
+    private var crumbsFull = false
+
+    /**
+     * The path from Root to [at]. When it does not fit, the middle folders give way to "…"
+     * (Root and the folders nearest [at] stay); tapping "…" lays out the whole path to scroll.
+     */
+    private fun buildCrumbs(at: File, full: Boolean = false) {
+        crumbsFull = full
         crumbs.removeAllViews()
         val r = lib.root(this)
         val chain = ArrayList<File>()
         var f: File? = at
         while (f != null && f != r) { chain.add(0, f); f = f.parentFile }
         chain.add(0, r)
-        chain.forEachIndexed { k, d ->
+        fun crumb(text: String, tagName: String, act: () -> Unit) = label(text, 14f, Theme.sub(), bold = true).apply {
+            tag = tagName
+            background = ripple()
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpi(12), 0, dpi(12), 0)
+            setOnClickListener { act() }
+        }
+        val labels = chain.mapIndexed { k, d -> crumb(if (d == r) "Root" else d.name, if (k == chain.size - 1) "here" else "crumb") { go(d) } }
+        val chevW = dpi(16 + 4)
+        fun widthOf(v: View): Int {
+            v.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.makeMeasureSpec(dpi(CRUMB_H), View.MeasureSpec.EXACTLY))
+            return v.measuredWidth
+        }
+        val widths = labels.map { widthOf(it) }
+        val room = crumbScroll.width - crumbScroll.paddingLeft - crumbScroll.paddingRight
+        var shown: List<View> = labels
+        if (!full && room > 0 && labels.size > 2 && widths.sum() + chevW * (labels.size - 1) > room) {
+            val more = crumb("…", "crumb") { buildCrumbs(at, full = true) }.apply { contentDescription = "Show the whole path" }
+            // Root, then "…", then as many of the nearest folders as fit; the current one always.
+            var from = labels.size - 1
+            var used = widths[0] + chevW + widthOf(more) + chevW + widths[from]
+            while (from - 1 >= 1 && used + chevW + widths[from - 1] <= room) { from--; used += chevW + widths[from] }
+            shown = if (from <= 1) labels else listOf(labels[0], more) + labels.subList(from, labels.size)
+        }
+        shown.forEachIndexed { k, v ->
             if (k > 0) crumbs.addView(ImageView(this).apply { setImageResource(R.drawable.ic_chevron); tag = "chev" },
                 LinearLayout.LayoutParams(dpi(16), dpi(16)).apply { marginStart = dpi(2); marginEnd = dpi(2) })
-            crumbs.addView(label(if (d == r) "Root" else d.name, 14f, Theme.sub(), bold = true).apply {
-                tag = if (k == chain.size - 1) "here" else "crumb"
-                background = ripple()
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpi(12), 0, dpi(12), 0)
-                setOnClickListener { go(d) }
-            }, LinearLayout.LayoutParams(WRAP_CONTENT, dpi(CRUMB_H)))
+            crumbs.addView(v, LinearLayout.LayoutParams(WRAP_CONTENT, dpi(CRUMB_H)))
         }
         paintCrumbs()
-        crumbScroll.post { crumbScroll.fullScroll(View.FOCUS_RIGHT) }
+        paintSwatch(at)  // [dir] changes only once the list has faded out
+        crumbScroll.post { crumbScroll.fullScroll(View.FOCUS_RIGHT); crumbScroll.post { crumbFades() } }
+    }
+
+    private fun crumbFades() {
+        if (!::crumbStart.isInitialized) return
+        crumbStart.show(crumbScroll.canScrollHorizontally(-1))
+        crumbEnd.show(crumbScroll.canScrollHorizontally(1))
+    }
+
+    private fun paintSwatch(at: File = dir) {
+        if (!::swatch.isInitialized) return
+        swatch.background = pill(folderColor(lib.folderHue(this, at)), 4f)
+        (swatchBtn.background as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
+    }
+
+    /** The editor's sixteen colours, 40 dp squares 8 dp apart, under the swatch; the folder's own is ringed. */
+    private fun folderColours(anchor: View) {
+        val f = dir
+        val cur = lib.folderHue(this, f)
+        val grid = android.widget.GridLayout(this).apply {
+            columnCount = 4
+            setPadding(dpi(8), dpi(8), dpi(8), dpi(8))
+        }
+        for (h in lib.SWATCHES) {
+            val square = android.graphics.drawable.InsetDrawable(pill(hueColor(h), 8f), dpi(4))
+            val face = if (h != cur) square else android.graphics.drawable.LayerDrawable(arrayOf(
+                pill(0, 12f).apply { setStroke(dpi(2), Theme.text()) }, square))
+            grid.addView(View(this).apply {
+                background = face
+                contentDescription = "Hue $h"
+                setOnClickListener {
+                    lib.setHue(this@HomeActivity, f, h)
+                    menu.dismiss()
+                    paintSwatch()
+                    refresh()
+                }
+            }, android.widget.GridLayout.LayoutParams().apply { width = dpi(48); height = dpi(48) })
+        }
+        val at = IntArray(2).also { anchor.getLocationInWindow(it) }
+        val fromRight = frame.width - (at[0] + anchor.width)
+        menu.showView(grid, Gravity.TOP or Gravity.END, fromRight, at[1] + anchor.height + dpi(4))
     }
 
     private fun paintCrumbs() {
-        crumbScroll.background = pill(Theme.card(), 14f)
+        crumbStrip.background = pill(Theme.card(), 14f)
+        crumbStart.invalidate(); crumbEnd.invalidate()
+        paintSwatch()
         for (i in 0 until crumbs.childCount) {
             val v = crumbs.getChildAt(i)
             when (v.tag) {
@@ -567,7 +666,7 @@ class HomeActivity : Activity() {
             interpolator = if (show) Motion.IN else Motion.OUT
             addUpdateListener {
                 lp.height = it.animatedValue as Int
-                crumbScroll.alpha = lp.height / full.toFloat()
+                crumbStrip.alpha = lp.height / full.toFloat()
                 crumbBox.requestLayout()
             }
             start()
@@ -1116,6 +1215,9 @@ class HomeActivity : Activity() {
         }
     }
 
+    /** A folder's colour: its picked hue, or the accent while it has none (-1). */
+    private fun folderColor(h: Int) = if (h < 0) Theme.accentInk() else hueColor(h)
+
     private fun hueColor(h: Int): Int {
         val hsv = floatArrayOf(h.toFloat(), 0.75f, 1f)
         return android.graphics.Color.HSVToColor(hsv)
@@ -1127,7 +1229,10 @@ class HomeActivity : Activity() {
         val box = card.getChildAt(0) as LinearLayout
         box.background = pill(Theme.card(), 12f)
         (box.foreground as? RippleDrawable)?.setColor(ColorStateList.valueOf(Theme.ripple()))
-        box.findViewWithTag<View>("strip").setBackgroundColor(if (e.dir) Theme.accentInk() else hueColor(e.hue))
+        // A sketch has no strip (its slot stays, so the texts line up with the folders').
+        // A folder takes the colour picked on its path strip, amber until one is.
+        val strip = when { e.dir -> folderColor(e.hue); e.file.name.endsWith(Sketches.EXT, true) -> 0; else -> hueColor(e.hue) }
+        box.findViewWithTag<View>("strip").setBackgroundColor(strip)
         box.findViewWithTag<ImageView>("icon")?.setColorFilter(Theme.accentInk())
         val texts = box.findViewWithTag<LinearLayout>("texts")
         val head = texts.getChildAt(0) as LinearLayout

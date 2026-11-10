@@ -84,6 +84,29 @@ class Menu(private val a: Activity, private val host: View) {
         o.animate().alpha(1f).setDuration(Motion.MS).setInterpolator(Motion.FADE).start()
     }
 
+    /** [content] in the menu's card, for a pick that is not a list of rows: same fade, same outside-tap close. */
+    fun showView(content: View, gravity: Int, x: Int, y: Int) {
+        dismiss(fade = false)
+        empty = null
+        val o = FrameLayout(a).apply {
+            elevation = a.dp(8f)
+            alpha = 0f
+            addView(content, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+        }
+        box = null; outer = o
+        pop = PopupWindow(o, WRAP_CONTENT, WRAP_CONTENT, false).apply {
+            elevation = a.dp(8f)
+            setBackgroundDrawable(null)
+            isOutsideTouchable = false
+            isTouchable = true
+            animationStyle = 0
+            showAtLocation(host, gravity, x, y)
+        }
+        Theme.listeners += onTheme
+        paint()
+        o.animate().alpha(1f).setDuration(Motion.MS).setInterpolator(Motion.FADE).start()
+    }
+
     private fun rowView(r: Row): LinearLayout = LinearLayout(a).apply row@{
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -154,8 +177,8 @@ class Menu(private val a: Activity, private val host: View) {
     }
 
     private fun paint() {
-        val b = box ?: return
         outer?.background = a.pill(Theme.popup(), 12f).apply { setStroke(a.dpi(1), Theme.outline()) }
+        val b = box ?: return
         for (i in 0 until b.childCount) {
             val v = b.getChildAt(i)
             if (v.tag == "empty") { (v as TextView).setTextColor(Theme.sub()); continue }

@@ -60,7 +60,10 @@ class SketchActivity : Activity() {
         canvas = SketchCanvas(this, w, h)
         val prefs = getSharedPreferences("ursa", MODE_PRIVATE)
         canvas.size = prefs.getInt("brush", 3)
-        if (made) canvas.inverted = Sketches.flag(this, file, "inv")
+        // Invert carries over: a new sketch starts the way the last sketch was left, and
+        // opening one makes its state the one the next new sketch takes.
+        canvas.inverted = if (made) Sketches.flag(this, file, "inv") else prefs.getBoolean("sketchInv", false)
+        prefs.edit().putBoolean("sketchInv", canvas.inverted).apply()
         pic?.let { canvas.load(it); it.recycle() }
         if (made) Sketches.touch(this, file)
         canvas.onChange = { strokeDone() }
@@ -180,6 +183,7 @@ class SketchActivity : Activity() {
 
     private fun invert() {
         canvas.inverted = !canvas.inverted
+        getSharedPreferences("ursa", MODE_PRIVATE).edit().putBoolean("sketchInv", canvas.inverted).apply()
         if (made) queueSave()
     }
 
