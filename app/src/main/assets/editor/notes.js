@@ -570,7 +570,7 @@ footer {
 <body>
 <div class="sheet">
 <main>${markdownToHtml(md)}</main>
-<footer>Written with <a href="https://github.com/exodus941/UrsaNotes">UrsaNotes</a>.</footer>
+<footer>Written with <a href="https://github.com/exodus941/ArkNotes">ArkNotes</a>.</footer>
 </div>
 </body>
 </html>

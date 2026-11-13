@@ -1,4 +1,4 @@
-/* UrsaPDF's palette (Theme.kt), its motion (Motion.kt: 250 ms, ease-out in,
+/* ArkPDF's palette (Theme.kt), its motion (Motion.kt: 250 ms, ease-out in,
    ease-in out, linear fades) and its accent. Light mode is set by the app. */
 :root {
   --bg: #121212;
@@ -60,7 +60,7 @@ svg path { vector-effect: non-scaling-stroke }
 
 .note-editor { display: flex; flex-direction: column; height: 100%; padding-top: var(--top) }
 
-/* A 48 dp icon button with a 24 dp glyph, as UrsaPDF's header buttons. */
+/* A 48 dp icon button with a 24 dp glyph, as ArkPDF's header buttons. */
 .btn.icon {
   width: 48px; height: 48px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -71,7 +71,7 @@ svg path { vector-effect: non-scaling-stroke }
 .btn.icon:active { background: var(--ripple) }
 
 /* The bar: back, colour, name, state, then the three actions. 16 dp from each
-   screen edge to the first glyph, as UrsaPDF's header (8 dp pad + 12 dp inside the 48). */
+   screen edge to the first glyph, as ArkPDF's header (8 dp pad + 12 dp inside the 48). */
 .note-bar { display: flex; align-items: center; gap: 0; padding: 8px 4px 4px 4px; min-height: 64px }
 .note-name { position: relative; display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; padding-inline-start: 4px }
 .note-swatch { width: 16px; height: 16px; border-radius: 4px; flex: 0 0 auto; position: relative }
@@ -178,11 +178,11 @@ svg path { vector-effect: non-scaling-stroke }
 }
 .note-body :where(pre code) { padding: 0; background: none; font-size: inherit }
 
-/* Search hits, amber as in UrsaPDF; the current one is solid. */
+/* Search hits, amber as in ArkPDF; the current one is solid. */
 ::highlight(hits) { background-color: var(--hit); color: inherit }
 ::highlight(hit-now) { background-color: var(--hit-now); color: #121212 }
 
-/* Menus: UrsaPDF's Menu.kt. Popup fill, a 1 dp outline, 12 dp corners, rows
+/* Menus: ArkPDF's Menu.kt. Popup fill, a 1 dp outline, 12 dp corners, rows
    15 sp with 12 dp vertical padding; a 250 ms linear fade both ways. */
 .menu {
   position: fixed; z-index: 20; margin: 0; padding: 8px 0; list-style: none;
@@ -219,7 +219,7 @@ svg path { vector-effect: non-scaling-stroke }
 .hue-grid button { width: 40px; height: 40px; border-radius: 8px }
 .hue-grid button[aria-checked="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text) }
 
-/* The modal: UrsaPDF's Modal.kt. Scrim to 50% black, card from 96% scale. */
+/* The modal: ArkPDF's Modal.kt. Scrim to 50% black, card from 96% scale. */
 .modal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 0 32px }
 .modal .scrim { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity var(--ms) linear }
 .modal[data-on] .scrim { opacity: .5 }

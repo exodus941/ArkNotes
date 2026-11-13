@@ -1,4 +1,4 @@
-/* The note editor, lifted from Yeetlist's notes-ui.js and themed to UrsaPDF.
+/* The note editor, lifted from Yeetlist's notes-ui.js and themed to ArkPDF.
    notes.js (Yeetlist's converter, unchanged but for its accent) turns the
    markdown file into editable HTML and back. The app holds the file; this page
    talks to it through the `Ursa` bridge. */
@@ -393,11 +393,11 @@ $('noteZoomTrigger').addEventListener('click', (e) => {
   openMenu(e.currentTarget, ZOOMS.map((z) => ({ label: `${z}%`, checked: z === Math.ceil(zoom), act: () => setZoom(z) })), { align: 'end' });
 });
 
-/* Pinch, or double-tap and drag as in UrsaPDF, sets the text size between the menu's ends.
+/* Pinch, or double-tap and drag as in ArkPDF, sets the text size between the menu's ends.
    The text is live, so lines rewrap to the screen on every move, and the line under the
    fingers stays under them. A double-tap drag doubles or halves every 90 px: up zooms in,
    down zooms out. Lifted without a drag, a double-tap stays the browser's own. */
-const TAP_MS = 300;       // UrsaPDF's double-tap window
+const TAP_MS = 300;       // ArkPDF's double-tap window
 const TAP_NEAR = 48;      // how close the second tap lands to the first
 const SLOP = 8;           // the drag that starts a zoom
 const QUICK_SPAN = 90;
@@ -577,7 +577,7 @@ function hueOpen(on) {
 
 $('noteHue').addEventListener('click', (e) => { e.stopPropagation(); closeMenu(); hueOpen($('huePop').hidden || $('huePop').dataset.on === undefined); });
 
-/* ── Search in the note: amber hits, as UrsaPDF's ─────────────────────── */
+/* ── Search in the note: amber hits, as ArkPDF's ─────────────────────── */
 
 let hits = [];
 let hitAt = -1;

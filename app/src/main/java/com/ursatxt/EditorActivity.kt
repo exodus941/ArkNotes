@@ -18,7 +18,7 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * One note, in Yeetlist's editor (assets/editor) themed to UrsaPDF. The page holds
+ * One note, in Yeetlist's editor (assets/editor) themed to ArkPDF. The page holds
  * the text; this side owns the file and its index entry.
  */
 class EditorActivity : Activity() {

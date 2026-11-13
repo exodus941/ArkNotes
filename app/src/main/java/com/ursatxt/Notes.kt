@@ -21,7 +21,7 @@ class Entry(
 const val META = ".ursatxt.json"
 
 /**
- * The app's folder: Documents/UrsaNotes once access is granted, the app's own folder
+ * The app's folder: Documents/ArkNotes once access is granted, the app's own folder
  * before that. It holds one folder per library, Notes and Sketches.
  */
 object Store {
@@ -31,12 +31,15 @@ object Store {
     private fun hasLegacy(c: Context): Boolean = Build.VERSION.SDK_INT >= 30 ||
         c.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-    /** Documents/UrsaNotes. Notes from when the app was UrsaTXT move here the first time. */
+    /** Documents/ArkNotes. Notes from when the app was UrsaNotes, or UrsaTXT before that,
+     *  move here the first time. */
     fun publicBase(): File {
         val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-        val root = File(docs, "UrsaNotes")
-        val old = File(docs, "UrsaTXT")
-        if (!root.exists() && old.isDirectory) old.renameTo(root)
+        val root = File(docs, "ArkNotes")
+        for (name in listOf("UrsaNotes", "UrsaTXT")) {
+            val old = File(docs, name)
+            if (!root.exists() && old.isDirectory) old.renameTo(root)
+        }
         return layout(root)
     }
 

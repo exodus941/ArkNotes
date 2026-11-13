@@ -28,12 +28,12 @@ jobs:
           V="${GITHUB_REF_NAME#v}"
           chmod +x gradlew
           ./gradlew assembleRelease -PversionName="$V" --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk "UrsaNotes-$V.apk"
+          cp app/build/outputs/apk/release/app-release.apk "ArkNotes-$V.apk"
           rm -f ursa.keystore
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" UrsaNotes-*.apk --title "UrsaNotes ${GITHUB_REF_NAME}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" ArkNotes-*.apk --title "ArkNotes ${GITHUB_REF_NAME}" --generate-notes
       # Only the newest release exists: every other release and its tag is deleted.
       - name: Remove older releases
         env:
