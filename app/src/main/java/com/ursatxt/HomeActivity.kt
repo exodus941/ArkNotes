@@ -745,6 +745,9 @@ class HomeActivity : Activity() {
             },
             Menu.Row("Export Notes", icon = R.drawable.ic_download) { exportAll() },
             Menu.Row("Import Notes", icon = R.drawable.ic_upload) { importPick() },
+            Menu.Row("GitHub", icon = R.drawable.ic_github) {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/${BuildConfig.UPDATE_REPO}")))
+            },
             Menu.Row("Check for Updates", icon = R.drawable.ic_refresh) { Updater.check(this) },
         )
         val at = IntArray(2).also { anchor.getLocationInWindow(it) }
